@@ -1,0 +1,78 @@
+import uuid
+from datetime import datetime
+from typing import TYPE_CHECKING
+
+from sqlalchemy import DateTime, String, Uuid, func
+from sqlalchemy.orm import Mapped, mapped_column, relationship
+
+from app.db.session import Base, JsonBlob, utc_now
+
+if TYPE_CHECKING:  # pragma: no cover - typing only
+    from app.models.analysis import (
+        MarketAttractiveness,
+        PricingRecommendation,
+        StrategyReport,
+        SwotAnalysis,
+    )
+    from app.models.competitor import Competitor
+
+
+class Company(Base):
+    __tablename__ = "companies"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    industry: Mapped[str | None] = mapped_column(String(100))
+
+    # Free-shaped by design: different case studies disclose different line
+    # items. The SWOT engine reads named keys and simply skips the metrics a
+    # given company did not supply, recording the omission in calculation_basis
+    # rather than imputing a value.
+    financial_data: Mapped[dict] = mapped_column(JsonBlob, nullable=False, default=dict)
+
+    # Market-level inputs (growth, size, regulatory outlook). Kept separate
+    # from financial_data because they describe the market, not the firm.
+    market_data: Mapped[dict] = mapped_column(JsonBlob, nullable=False, default=dict)
+
+    # {feature_name: score} on a 1-5 scale, using the same feature names as the
+    # competitors. The pricing engine intersects the key sets, so a feature the
+    # competitors never scored is silently useless rather than quietly wrong.
+    feature_scores: Mapped[dict] = mapped_column(JsonBlob, nullable=False, default=dict)
+
+    # Analyst-supplied qualitative factors: brand, distribution, talent.
+    # [{factor, category, evidence, impact_score}] - scored by a human, carried
+    # through untouched, and labelled as analyst input in the output so it is
+    # never mistaken for a computed figure.
+    qualitative_inputs: Mapped[list] = mapped_column(JsonBlob, nullable=False, default=list)
+
+    # Where the numbers came from. Required in the API layer; a case study with
+    # no provenance is not a case study.
+    data_source: Mapped[str | None] = mapped_column(String(500))
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utc_now, server_default=func.now()
+    )
+
+    competitors: Mapped[list["Competitor"]] = relationship(
+        back_populates="company", cascade="all, delete-orphan", order_by="Competitor.added_at"
+    )
+    swot_analyses: Mapped[list["SwotAnalysis"]] = relationship(
+        back_populates="company",
+        cascade="all, delete-orphan",
+        order_by="SwotAnalysis.generated_at",
+    )
+    attractiveness_results: Mapped[list["MarketAttractiveness"]] = relationship(
+        back_populates="company",
+        cascade="all, delete-orphan",
+        order_by="MarketAttractiveness.calculated_at",
+    )
+    pricing_recommendations: Mapped[list["PricingRecommendation"]] = relationship(
+        back_populates="company",
+        cascade="all, delete-orphan",
+        order_by="PricingRecommendation.calculated_at",
+    )
+    reports: Mapped[list["StrategyReport"]] = relationship(
+        back_populates="company",
+        cascade="all, delete-orphan",
+        order_by="StrategyReport.generated_at",
+    )
