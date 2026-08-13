@@ -1,0 +1,147 @@
+"""Shared fixtures.
+
+Two kinds of test live in this suite.
+
+The engine tests exercise the pure scoring functions directly — no database, no
+network, no model. That is deliberate: the claims this project makes (the SWOT
+grid is computed from benchmarks, the matrix is arithmetic, the price is floored
+at cost, the report degrades without an API key) are all claims about those
+functions, so they should be verifiable by anyone who clones the repo and runs
+``pytest`` with nothing running.
+
+The API tests run the real FastAPI app against a temporary SQLite file. The
+models declare JSONB and UUID as dialect *variants*, so the same schema loads on
+SQLite — which means the HTTP contract is tested on a clone with no Postgres
+container up, rather than being the one layer nobody ever runs.
+"""
+
+from __future__ import annotations
+
+import os
+import sys
+import tempfile
+from pathlib import Path
+
+import pytest
+
+# Must happen before app.config is imported anywhere: get_settings is cached,
+# so the first read of DATABASE_URL is the one that sticks.
+_TMP_DB = Path(tempfile.mkdtemp(prefix="strategysphere-tests-")) / "test.db"
+os.environ["DATABASE_URL"] = f"sqlite:///{_TMP_DB}"
+os.environ.setdefault("ANTHROPIC_API_KEY", "")
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+from app.config import Settings  # noqa: E402
+from app.services.market_structure import assess_market_structure  # noqa: E402
+
+
+@pytest.fixture
+def settings() -> Settings:
+    """Default parameter set, isolated from any .env on the developer's machine."""
+    return Settings(_env_file=None)
+
+
+@pytest.fixture
+def strong_financials() -> dict:
+    """A company comfortably ahead of the default industry bands on every axis."""
+    return {
+        "revenue_growth_pct": 22.0,      # vs 8.0 default -> +175%
+        "gross_margin_pct": 62.0,        # vs 40.0        -> +55%
+        "operating_margin_pct": 21.0,    # vs 12.0        -> +75%
+        "net_margin_pct": 14.0,          # vs 8.0         -> +75%
+        "market_share_pct": 28.0,        # vs 10.0        -> +180%
+        "debt_to_equity": 0.4,           # vs 1.0, lower is better -> +60%
+    }
+
+
+@pytest.fixture
+def weak_financials() -> dict:
+    """The mirror image: behind the bands everywhere."""
+    return {
+        "revenue_growth_pct": 1.0,
+        "gross_margin_pct": 18.0,
+        "operating_margin_pct": 3.0,
+        "net_margin_pct": 1.0,
+        "market_share_pct": 3.0,
+        "debt_to_equity": 2.6,
+    }
+
+
+@pytest.fixture
+def growth_market() -> dict:
+    return {
+        "market_growth_pct": 18.0,
+        "market_size_usd_bn": 40.0,
+        "industry_operating_margin_pct": 20.0,
+    }
+
+
+@pytest.fixture
+def declining_market() -> dict:
+    return {
+        "market_growth_pct": 1.0,
+        "market_size_usd_bn": 0.5,
+        "industry_operating_margin_pct": 3.0,
+    }
+
+
+@pytest.fixture
+def competitors() -> list[dict]:
+    """Four rivals with prices, shares, features, and financials."""
+    return [
+        {
+            "competitor_name": "Rival A",
+            "price_point": 100.0,
+            "market_share_pct": 20.0,
+            "feature_scores": {"speed": 3, "support": 4, "uptime": 3},
+            "financial_data": {"operating_margin_pct": 10.0, "gross_margin_pct": 38.0},
+        },
+        {
+            "competitor_name": "Rival B",
+            "price_point": 110.0,
+            "market_share_pct": 15.0,
+            "feature_scores": {"speed": 2, "support": 3, "uptime": 4},
+            "financial_data": {"operating_margin_pct": 12.0, "gross_margin_pct": 42.0},
+        },
+        {
+            "competitor_name": "Rival C",
+            "price_point": 95.0,
+            "market_share_pct": 12.0,
+            "feature_scores": {"speed": 4, "support": 2, "uptime": 3},
+            "financial_data": {"operating_margin_pct": 8.0, "gross_margin_pct": 35.0},
+        },
+        {
+            "competitor_name": "Rival D",
+            "price_point": 105.0,
+            "market_share_pct": 8.0,
+            "feature_scores": {"speed": 3, "support": 3, "uptime": 2},
+            "financial_data": {"operating_margin_pct": 14.0, "gross_margin_pct": 45.0},
+        },
+    ]
+
+
+@pytest.fixture
+def neutral_concentration(settings: Settings):
+    """Market structure with no shares supplied -> neutral 3.0 intensity."""
+    return assess_market_structure(
+        company_market_share_pct=None,
+        competitors=[],
+        analyst_intensity_override=None,
+        settings=settings,
+    )
+
+
+@pytest.fixture
+def client():
+    """FastAPI TestClient over a fresh SQLite schema."""
+    from fastapi.testclient import TestClient
+
+    from app.db.session import Base, engine
+    from app.main import app
+
+    Base.metadata.drop_all(bind=engine)
+    Base.metadata.create_all(bind=engine)
+    with TestClient(app) as test_client:
+        yield test_client
+    Base.metadata.drop_all(bind=engine)
