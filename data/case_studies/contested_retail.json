@@ -1,0 +1,110 @@
+{
+  "_note": "ILLUSTRATIVE COMPOSITE - not a real company. Replace with figures from an annual report before drawing conclusions.",
+  "company": {
+    "name": "Calder & Roe (illustrative)",
+    "industry": "retail",
+    "data_source": "ILLUSTRATIVE COMPOSITE - not a real company. Replace with figures from an annual report before drawing conclusions.",
+    "financial_data": {
+      "revenue_growth_pct": 11.0,
+      "gross_margin_pct": 33.0,
+      "operating_margin_pct": 6.4,
+      "net_margin_pct": 2.9,
+      "return_on_capital_pct": 10.0,
+      "market_share_pct": 6.0,
+      "customer_retention_pct": 58.0,
+      "debt_to_equity": 1.9
+    },
+    "market_data": {
+      "market_growth_pct": 7.0,
+      "market_size_usd_bn": 22.0,
+      "industry_operating_margin_pct": 7.0,
+      "regulatory_outlook": "NEUTRAL"
+    },
+    "feature_scores": {
+      "assortment": 4,
+      "delivery": 3,
+      "price_perception": 2
+    },
+    "qualitative_inputs": [
+      {
+        "factor": "Loyalty programme with high repeat share",
+        "category": "STRENGTH",
+        "evidence": "A majority of revenue comes from enrolled members.",
+        "impact_score": 3
+      },
+      {
+        "factor": "Rising last-mile delivery cost",
+        "category": "THREAT",
+        "evidence": "Fulfilment cost per order has risen for six consecutive quarters.",
+        "impact_score": 4
+      }
+    ]
+  },
+  "competitors": [
+    {
+      "competitor_name": "Vale Retail",
+      "price_point": 74,
+      "market_share_pct": 8,
+      "feature_scores": {
+        "assortment": 4,
+        "delivery": 4,
+        "price_perception": 3
+      },
+      "financial_data": {
+        "operating_margin_pct": 6.0,
+        "gross_margin_pct": 30.0,
+        "revenue_growth_pct": 6.0
+      }
+    },
+    {
+      "competitor_name": "Brightmarket",
+      "price_point": 69,
+      "market_share_pct": 7,
+      "feature_scores": {
+        "assortment": 3,
+        "delivery": 5,
+        "price_perception": 4
+      },
+      "financial_data": {
+        "operating_margin_pct": 5.0,
+        "gross_margin_pct": 27.0,
+        "revenue_growth_pct": 9.0
+      }
+    },
+    {
+      "competitor_name": "Ashgrove Stores",
+      "price_point": 78,
+      "market_share_pct": 6,
+      "feature_scores": {
+        "assortment": 5,
+        "delivery": 2,
+        "price_perception": 2
+      },
+      "financial_data": {
+        "operating_margin_pct": 7.5,
+        "gross_margin_pct": 32.0,
+        "revenue_growth_pct": 3.0
+      }
+    },
+    {
+      "competitor_name": "Nine Elms Direct",
+      "price_point": 71,
+      "market_share_pct": 5,
+      "feature_scores": {
+        "assortment": 3,
+        "delivery": 4,
+        "price_perception": 4
+      },
+      "financial_data": {
+        "operating_margin_pct": 4.5,
+        "gross_margin_pct": 26.0,
+        "revenue_growth_pct": 12.0
+      }
+    }
+  ],
+  "pricing_scenario": {
+    "cost_base": 52.0,
+    "target_margin_pct": 0.3,
+    "margin_basis": "MARGIN"
+  }
+}

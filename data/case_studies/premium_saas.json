@@ -1,0 +1,116 @@
+{
+  "_note": "ILLUSTRATIVE COMPOSITE - not a real company. Replace with figures from an annual report before drawing conclusions.",
+  "company": {
+    "name": "Northwind Analytics (illustrative)",
+    "industry": "saas",
+    "data_source": "ILLUSTRATIVE COMPOSITE - not a real company. Replace with figures from an annual report before drawing conclusions.",
+    "financial_data": {
+      "revenue_growth_pct": 34.0,
+      "gross_margin_pct": 82.0,
+      "operating_margin_pct": 14.0,
+      "net_margin_pct": 9.0,
+      "return_on_capital_pct": 16.0,
+      "market_share_pct": 12.0,
+      "customer_retention_pct": 94.0,
+      "rnd_intensity_pct": 24.0,
+      "debt_to_equity": 0.2
+    },
+    "market_data": {
+      "market_growth_pct": 19.0,
+      "market_size_usd_bn": 42.0,
+      "industry_operating_margin_pct": 17.0,
+      "regulatory_outlook": "NEUTRAL"
+    },
+    "feature_scores": {
+      "integrations": 5,
+      "support": 4,
+      "uptime": 5,
+      "reporting": 4
+    },
+    "qualitative_inputs": [
+      {
+        "factor": "Category-defining brand in a narrow niche",
+        "category": "STRENGTH",
+        "evidence": "Consistently named in analyst shortlists for this segment.",
+        "impact_score": 4
+      },
+      {
+        "factor": "Single-region engineering concentration",
+        "category": "WEAKNESS",
+        "evidence": "All delivery capacity sits in one metro, with no failover.",
+        "impact_score": 3
+      }
+    ]
+  },
+  "competitors": [
+    {
+      "competitor_name": "Meridian Data",
+      "price_point": 1200,
+      "market_share_pct": 15,
+      "feature_scores": {
+        "integrations": 4,
+        "support": 3,
+        "uptime": 4,
+        "reporting": 4
+      },
+      "financial_data": {
+        "operating_margin_pct": 9.0,
+        "gross_margin_pct": 74.0,
+        "revenue_growth_pct": 21.0
+      }
+    },
+    {
+      "competitor_name": "Corvus Insights",
+      "price_point": 900,
+      "market_share_pct": 11,
+      "feature_scores": {
+        "integrations": 3,
+        "support": 4,
+        "uptime": 3,
+        "reporting": 5
+      },
+      "financial_data": {
+        "operating_margin_pct": 6.0,
+        "gross_margin_pct": 71.0,
+        "revenue_growth_pct": 28.0
+      }
+    },
+    {
+      "competitor_name": "Halcyon BI",
+      "price_point": 1500,
+      "market_share_pct": 9,
+      "feature_scores": {
+        "integrations": 5,
+        "support": 2,
+        "uptime": 4,
+        "reporting": 3
+      },
+      "financial_data": {
+        "operating_margin_pct": 12.0,
+        "gross_margin_pct": 78.0,
+        "revenue_growth_pct": 14.0
+      }
+    },
+    {
+      "competitor_name": "Tessera Cloud",
+      "price_point": 1100,
+      "market_share_pct": 7,
+      "feature_scores": {
+        "integrations": 3,
+        "support": 3,
+        "uptime": 5,
+        "reporting": 3
+      },
+      "financial_data": {
+        "operating_margin_pct": 4.0,
+        "gross_margin_pct": 69.0,
+        "revenue_growth_pct": 33.0
+      }
+    }
+  ],
+  "pricing_scenario": {
+    "cost_base": 480.0,
+    "target_margin_pct": 0.45,
+    "margin_basis": "MARGIN"
+  }
+}
