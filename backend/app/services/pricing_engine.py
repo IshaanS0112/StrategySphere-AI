@@ -10,15 +10,14 @@ Three classical anchors, blended and then adjusted for relative value:
     recommended = (w_cost·cost_plus + w_comp·benchmark) × value_adjustment
     range       = [recommended × 0.9, recommended × 1.1]
 
-**On "target margin" — the spec's formula is wrong, deliberately corrected.**
+**On "target margin" — the obvious formula is wrong, deliberately corrected.**
 ``cost × (1 + m)`` is a *markup*, not a margin. On a cost of 100 with m = 0.40
 it returns 140, and the realised margin on that price is (140 − 100)/140 =
 28.6%, not the 40% that was asked for. The correct cost-plus price for a target
 *margin* is ``cost / (1 − m)`` = 166.67, which does deliver 40%. This engine
 defaults to MARGIN basis and exposes MARKUP as an explicit option, and reports
 ``implied_margin_pct`` on every result so the discrepancy is visible rather than
-buried. This is the one place the implementation knowingly departs from the
-project spec; the reconciliation is in ``docs/architecture.md``.
+buried. The reconciliation is in ``docs/architecture.md``.
 
 **Guard rails, because an unbounded formula will eventually produce nonsense:**
 
@@ -67,7 +66,7 @@ class PricingResult:
 def cost_plus_price(cost_base: float, target_margin_pct: float, basis: MarginBasis) -> float:
     """Cost-plus anchor under either interpretation of ``target_margin_pct``.
 
-    ``target_margin_pct`` is a fraction (0.40 = 40%), matching the spec.
+    ``target_margin_pct`` is a fraction: 0.40 means 40%.
     """
     if cost_base < 0:
         raise PricingInputError("cost_base cannot be negative")

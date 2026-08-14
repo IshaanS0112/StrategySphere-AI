@@ -2,9 +2,9 @@
 
 The two things worth pinning hard: the weighted sum stays on the 1-5 axis (it
 does not if the weights drift off 1.0), and the competitive-strength correction
-reduces exactly to the spec formula when its penalty is switched off. The
-second is what lets the README claim the deviation is deliberate rather than a
-different formula wearing the same name.
+reduces exactly to the unadjusted strength mean when its penalty is switched
+off. The second is what makes the deviation a deliberate correction rather than
+a different formula wearing the same name.
 """
 
 from __future__ import annotations
@@ -56,12 +56,12 @@ class TestCompetitiveStrength:
         with_weak, _ = compute_competitive_strength(swot_with([5, 5], [5, 5]), settings)
         assert with_weak < without
 
-    def test_penalty_zero_reproduces_the_spec_formula_exactly(self):
+    def test_penalty_zero_reproduces_the_unadjusted_mean(self):
         """The documented deviation must be switchable, or it is not a deviation."""
-        spec_settings = Settings(_env_file=None, swot_weakness_penalty=0.0)
+        unadjusted = Settings(_env_file=None, swot_weakness_penalty=0.0)
         swot = swot_with([4, 2, 5], [5, 5, 5])
-        score, basis = compute_competitive_strength(swot, spec_settings)
-        assert score == pytest.approx(basis["spec_formula_value"])
+        score, basis = compute_competitive_strength(swot, unadjusted)
+        assert score == pytest.approx(basis["unadjusted_strength_mean"])
         assert score == pytest.approx((4 + 2 + 5) / 3, abs=1e-4)
 
     def test_nothing_scored_at_all_is_neutral_and_warns(self, settings: Settings):

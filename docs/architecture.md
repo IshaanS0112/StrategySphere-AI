@@ -87,14 +87,14 @@ labelled data this repo does not have.
 
 ---
 
-## Where this implementation departs from its own spec
+## Where the implementation departs from the original design
 
 Both deviations are deliberate, both are switchable, and both are pinned by a
 test so the claim is checkable.
 
 ### 1. `target_margin_pct` is a margin, not a markup
 
-The spec defines the cost-plus anchor as `cost_base × (1 + target_margin_pct)`.
+My original design note specified the cost-plus anchor as `cost_base × (1 + target_margin_pct)`.
 That is a **markup**. On a cost of 100 with a 40% target it returns 140, and the
 margin actually realised on that price is `(140 − 100) / 140 = 28.6%` — not the
 40% that was asked for. The correct cost-plus price for a target *margin* is
@@ -107,7 +107,7 @@ distinction is surfaced rather than buried.
 
 ### 2. Competitive strength accounts for weaknesses
 
-The spec defines the strength axis as the mean of SWOT strength impact scores.
+The original design defined the strength axis as the mean of SWOT strength impact scores.
 That formula cannot see weaknesses at all: a company with one outstanding margin
 and four structural problems scores as strong.
 
@@ -118,17 +118,17 @@ competitive_strength = base − swot_weakness_penalty × (mean(weakness_impacts)
 ```
 
 centred on 3.0 so a company with average weaknesses is unaffected. Setting
-`SWOT_WEAKNESS_PENALTY=0` reproduces the spec formula exactly whenever at least
-one strength was scored, and `test_penalty_zero_reproduces_the_spec_formula_exactly`
+`SWOT_WEAKNESS_PENALTY=0` reproduces the unadjusted mean exactly whenever at
+least one strength was scored, and `test_penalty_zero_reproduces_the_unadjusted_mean`
 asserts it.
 
-### 3. Additions the spec did not ask for
+### 3. Additions beyond the original design
 
 - **`borderline` flag.** A position within 0.15 of a quadrant boundary is
   reported as provisional. 3.51 and 3.49 are not meaningfully different, and
   presenting the first as a confident `INVEST_GROW` is how a model gets a
   committee to make a decision the arithmetic does not support.
-- **HHI-derived competitive intensity.** The spec has intensity as a 1-5 input.
+- **HHI-derived competitive intensity.** The original design took intensity as a 1-5 input.
   Asking the analyst to type it in makes the matrix a re-display of an opinion.
 - **`GET /methodology`.** The parameter set is only checkable if it is visible
   without reading source.
@@ -207,7 +207,7 @@ recorded when the cap fires.
   scale-invariance of the price-dispersion CV, every intensity fallback path.
 - `test_attractiveness_matrix.py` — all-max gives exactly 5.0 and all-min
   exactly 1.0 (which only holds if the weights sum to 1), quadrant boundaries
-  including the strict-inequality edges, the spec-equivalence proof, the
+  including the strict-inequality edges, the equivalence proof, the
   zero-strengths regression, weight validation at config load.
 - `test_pricing_engine.py` — margin vs markup arithmetic pinned numerically,
   the shared-feature intersection, the clamp, the cost floor, confidence

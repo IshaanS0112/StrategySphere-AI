@@ -11,7 +11,7 @@ US DOJ/FTC. Their 2023 Merger Guidelines bands are: unconcentrated below 1,000,
 moderately concentrated 1,000-1,800, highly concentrated above 1,800. Those
 cutoffs are configurable in ``Settings``.
 
-**Two assumptions worth stating out loud**, because an interviewer will ask:
+**Two assumptions worth stating out loud**, because both bound what the output means:
 
 1. *The residual is treated as an atomistic fringe.* If the focal company and
    its named competitors account for 70% of the market, the missing 30% is

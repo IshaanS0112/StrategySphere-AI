@@ -30,7 +30,7 @@ The two defensible sources for a project like this, in order of preference:
    assembled. If you use one, cite the case ID in `data_source`.
 
 **Do not scrape competitor pricing pages.** It is a terms-of-service problem
-and, for a portfolio project, an entirely unnecessary one — every quadrant this
+and an entirely unnecessary one at this scope — every quadrant this
 tool can produce is reachable from disclosed figures.
 
 ## File format

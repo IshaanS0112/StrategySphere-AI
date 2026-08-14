@@ -18,8 +18,8 @@ what keeps the output on the 1-5 scale the thresholds assume.
 
     competitive_strength = mean(strength impacts) − penalty·(mean(weakness impacts) − 3)
 
-The spec for this project defines competitive strength as the mean of SWOT
-strength impact scores alone. That formula has a real defect: a company with one
+An earlier formulation of this axis used the mean of SWOT strength impact
+scores alone. That formula has a real defect: a company with one
 outstanding margin and four structural weaknesses scores as strong, because
 nothing in the formula can see the weaknesses. The penalty term fixes it, and is
 centred on 3.0 so a company with *average* weaknesses is unaffected. Setting
@@ -133,10 +133,10 @@ def compute_competitive_strength(
         ),
         "base_value": round(raw_strength, 4),
         "base_reason": base_reason,
-        "spec_deviation": (
-            "The project spec defines this as mean(strength_impacts) alone. The "
+        "design_deviation": (
+            "The original formulation used mean(strength_impacts) alone. The "
             "penalty term is a deliberate correction so that weaknesses can move "
-            "the axis; set swot_weakness_penalty=0 to recover the spec formula "
+            "the axis; set swot_weakness_penalty=0 to recover the original formula "
             "whenever at least one strength was scored."
         ),
         "mean_strength_impact": round(float(mean(strength_scores)), 4)
@@ -147,7 +147,7 @@ def compute_competitive_strength(
         "weakness_factor_count": len(weakness_scores),
         "weakness_penalty_applied": round(penalty, 4),
         "swot_weakness_penalty": settings.swot_weakness_penalty,
-        "spec_formula_value": round(float(mean(strength_scores)), 4)
+        "unadjusted_strength_mean": round(float(mean(strength_scores)), 4)
         if strength_scores
         else None,
         "clamped": not (1.0 <= raw_strength - penalty <= 5.0),

@@ -1,8 +1,8 @@
 """Pricing.
 
 The margin-vs-markup arithmetic is pinned numerically here, because that is the
-one place this implementation knowingly departs from the project spec and the
-claim in the README is only worth making if a test proves it.
+one place this implementation knowingly departs from the textbook shorthand,
+and the claim in the README is only worth making if a test proves it.
 """
 
 from __future__ import annotations
@@ -27,7 +27,7 @@ class TestCostPlusAnchor:
         assert realised == pytest.approx(0.40, abs=1e-9)
 
     def test_markup_basis_does_not(self):
-        """The spec's cost x (1 + m). A 40% 'margin' is really 28.6%."""
+        """The textbook shorthand, cost x (1 + m). A 40% 'margin' is really 28.6%."""
         price = cost_plus_price(100.0, 0.40, MarginBasis.MARKUP)
         assert price == pytest.approx(140.0)
         realised = (price - 100.0) / price

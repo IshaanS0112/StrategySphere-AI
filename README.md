@@ -1,5 +1,7 @@
 # StrategySphere
 
+[![CI](https://github.com/IshaanS0112/StrategySphere-AI/actions/workflows/ci.yml/badge.svg)](https://github.com/IshaanS0112/StrategySphere-AI/actions/workflows/ci.yml) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+
 **Executive decision intelligence — a scored SWOT engine, a GE-McKinsey market attractiveness matrix, and a cost-plus/competitor-benchmarked pricing model. The AI writes the summary; it does not decide the strategy.**
 
 FastAPI · PostgreSQL · React + TypeScript · Docker
@@ -73,22 +75,21 @@ Two of those rows show the guard rails doing their job rather than the happy pat
 
 The three case files in `data/case_studies/` are **illustrative composites, not real companies** — they exist so the pipeline can be exercised in one click, and every one of them says so in its own `data_source` field, which the UI displays on every downstream result. The built-in industry benchmark table is likewise **placeholder round numbers, not sourced data**; supplying competitor financials so the engine uses a peer-set median is the intended path, and `data/case_studies/SOURCES.md` explains how to swap in real figures from filings.
 
-`docs/architecture.md` has the full "what's real vs simulated" breakdown, the bugs found while building it, and the two places the implementation deliberately departs from its own spec.
+`docs/architecture.md` has the full "what's real vs simulated" breakdown, the bugs found while building it, and the two places the implementation deliberately departs from my original design note.
 
 ---
 
 ## Quick start
 
+Requires Docker, or Python 3.10+ and Node 18+.
+
 ```bash
-git clone https://github.com/<you>/StrategySphere.git && cd StrategySphere
+git clone https://github.com/IshaanS0112/StrategySphere-AI.git
+cd StrategySphere-AI
 
 export ANTHROPIC_API_KEY=sk-...      # optional; without it, reports use the fallback
 docker compose up --build
 ```
-
-**`docs/RUNBOOK.md` is the step-by-step version** — both run paths, the exact
-output each command should produce, how to verify the install, and a
-troubleshooting table.
 
 Dashboard on <http://localhost:5173>, API docs on <http://localhost:8000/docs>.
 
@@ -114,8 +115,20 @@ The models declare JSONB and UUID as dialect *variants*, so the whole app runs o
 ### Frontend
 
 ```bash
-cd frontend && npm install && npm run dev     # proxies /api to :8000
+cd frontend && npm ci && npm run dev     # proxies /api to :8000
 ```
+
+### Verifying an install
+
+```bash
+cd backend && pytest                              # 137 passed
+curl localhost:8000/health                        # {"status":"ok"}
+python backend/scripts/load_case_study.py \
+    data/case_studies/premium_saas.json --api http://localhost:8000 --run-all
+```
+
+The last command should print `attractiveness 3.8, strength 3.6667 -> INVEST_GROW`.
+Those figures are deterministic, so a mismatch means something is genuinely wrong.
 
 ---
 
@@ -171,5 +184,11 @@ backend/tests/           137 tests, engine tests need no database
 backend/scripts/         load_case_study.py
 frontend/src/            SWOTGrid · AttractivenessMatrix · PricingView · ReportView
 data/case_studies/       illustrative composites + SOURCES.md
-docs/architecture.md     what's real vs simulated, bugs found, spec deviations
+docs/architecture.md     what's real vs simulated, bugs found, design deviations
 ```
+
+---
+
+## Licence
+
+MIT — see [LICENSE](LICENSE).

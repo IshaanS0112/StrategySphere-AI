@@ -56,7 +56,7 @@ class Settings(BaseSettings):
 
     # --- GE-McKinsey market attractiveness ---------------------------------
     # Weights must sum to 1.0; enforced below. Defaults are the ones documented
-    # in the project spec.
+    # in the original design note.
     attractiveness_w_growth: float = 0.3
     attractiveness_w_size: float = 0.2
     attractiveness_w_profitability: float = 0.3
@@ -69,16 +69,16 @@ class Settings(BaseSettings):
     # instead of being reported as a confident quadrant placement.
     quadrant_borderline_margin: float = 0.15
 
-    # Competitive strength: the spec defines it as the mean of SWOT strength
+    # Competitive strength: the original design used the mean of SWOT strength
     # impact scores. That formula ignores weaknesses entirely, so a company
     # with one excellent margin and four structural problems scores as strong.
     # The penalty term below corrects for that. Setting it to 0.0 reproduces
-    # the spec formula exactly; see docs/architecture.md.
+    # the original formula exactly; see docs/architecture.md.
     swot_weakness_penalty: float = 0.5
     swot_neutral_impact: float = 3.0       # weakness level at which no penalty applies
 
     # --- Pricing ------------------------------------------------------------
-    # "target_margin_pct" is ambiguous in the spec: cost x (1 + m) is a MARKUP,
+    # "target_margin_pct" is ambiguous shorthand: cost x (1 + m) is a MARKUP,
     # not a margin. At m = 0.40 on a cost of 100 it yields 140, which is a
     # 28.6% margin, not 40%. MARGIN basis (cost / (1 - m)) yields 166.67, which
     # actually delivers 40%. Default is the correct reading; MARKUP remains

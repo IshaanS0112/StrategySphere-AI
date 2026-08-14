@@ -12,19 +12,29 @@ jobs:
     defaults:
       run:
         working-directory: backend
+    strategy:
+      fail-fast: false
+      matrix:
+        # 3.10 is the floor: the SQLAlchemy models use PEP 604 unions in
+        # runtime-evaluated annotations. Testing both ends catches a
+        # regression that would only appear on one of them.
+        python-version: ["3.10", "3.12"]
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.12"
+          python-version: ${{ matrix.python-version }}
           cache: pip
           cache-dependency-path: backend/requirements-dev.txt
+
       - name: Install dependencies
         run: pip install -r requirements-dev.txt
+
       - name: Run tests
-        # No services block: the models declare JSONB and UUID as dialect
-        # variants, so the API tests run the real app against SQLite and CI
-        # needs no database container.
+        # No services block. The models declare JSONB and UUID as dialect
+        # variants, so the API tests exercise the real app against SQLite and
+        # CI needs no database container.
         run: python -m pytest -q
 
   frontend:
@@ -35,12 +45,35 @@ jobs:
         working-directory: frontend
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
       - name: Install dependencies
-        run: npm install
+        # ci, not install: fails loudly if package-lock.json has drifted from
+        # package.json rather than silently resolving something new.
+        run: npm ci
+
       - name: Typecheck
         run: npm run typecheck
+
       - name: Build
         run: npm run build
+
+  docker:
+    name: Docker images build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # The compose stack is the documented way to run this project, so a
+      # broken Dockerfile is a broken quick-start. Build only - starting the
+      # stack would need a Postgres service for no extra signal.
+      - name: Build backend image
+        run: docker build -t strategysphere-backend ./backend
+
+      - name: Build frontend image
+        run: docker build -t strategysphere-frontend ./frontend
