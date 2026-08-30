@@ -11,7 +11,7 @@ from __future__ import annotations
 import pytest
 
 from app.config import Settings
-from app.enums import BenchmarkBasis, SwotCategory
+from app.enums import BenchmarkBasis
 from app.services.market_structure import assess_market_structure
 from app.services.swot_engine import (
     band_score,
