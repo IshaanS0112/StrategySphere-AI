@@ -37,6 +37,16 @@ jobs:
         # CI needs no database container.
         run: python -m pytest -q
 
+      - name: Migrations apply and roll back cleanly
+        # A migration that cannot be reversed is a migration you cannot deploy
+        # with confidence, so the round-trip is part of the contract.
+        env:
+          DATABASE_URL: sqlite:///./ci.db
+        run: |
+          python -m alembic upgrade head
+          python -m alembic downgrade base
+          python -m alembic upgrade head
+
   frontend:
     name: Frontend typecheck and build
     runs-on: ubuntu-latest

@@ -1,0 +1,259 @@
+{
+  "_note": "SYNTHETIC DEMONSTRATION PANEL - generated, not real companies and not real outcomes. It exists so the harness can be exercised end to end. Any result computed from it says something about the harness, and nothing whatsoever about whether the GE-McKinsey framework predicts business performance.",
+  "_generation": "seeded RNG, three quadrant groups with a real mean gap plus gaussian noise",
+  "outcome_definition": "3-year revenue CAGR, expressed as a fraction",
+  "panel": [
+    {
+      "label": "SYNTH-001",
+      "quadrant": "INVEST_GROW",
+      "attractiveness": 4.65,
+      "strength": 4.24,
+      "outcome": 0.2677
+    },
+    {
+      "label": "SYNTH-002",
+      "quadrant": "INVEST_GROW",
+      "attractiveness": 4.27,
+      "strength": 4.08,
+      "outcome": 0.1795
+    },
+    {
+      "label": "SYNTH-003",
+      "quadrant": "INVEST_GROW",
+      "attractiveness": 4.4,
+      "strength": 4.52,
+      "outcome": 0.239
+    },
+    {
+      "label": "SYNTH-004",
+      "quadrant": "INVEST_GROW",
+      "attractiveness": 4.52,
+      "strength": 4.03,
+      "outcome": 0.28
+    },
+    {
+      "label": "SYNTH-005",
+      "quadrant": "INVEST_GROW",
+      "attractiveness": 4.14,
+      "strength": 4.05,
+      "outcome": 0.125
+    },
+    {
+      "label": "SYNTH-006",
+      "quadrant": "INVEST_GROW",
+      "attractiveness": 4.22,
+      "strength": 4.43,
+      "outcome": 0.2177
+    },
+    {
+      "label": "SYNTH-007",
+      "quadrant": "INVEST_GROW",
+      "attractiveness": 4.52,
+      "strength": 4.11,
+      "outcome": -0.0688
+    },
+    {
+      "label": "SYNTH-008",
+      "quadrant": "INVEST_GROW",
+      "attractiveness": 4.29,
+      "strength": 4.17,
+      "outcome": 0.2415
+    },
+    {
+      "label": "SYNTH-009",
+      "quadrant": "INVEST_GROW",
+      "attractiveness": 4.17,
+      "strength": 4.19,
+      "outcome": 0.0922
+    },
+    {
+      "label": "SYNTH-010",
+      "quadrant": "INVEST_GROW",
+      "attractiveness": 4.27,
+      "strength": 4.16,
+      "outcome": 0.2468
+    },
+    {
+      "label": "SYNTH-011",
+      "quadrant": "INVEST_GROW",
+      "attractiveness": 4.17,
+      "strength": 4.37,
+      "outcome": 0.042
+    },
+    {
+      "label": "SYNTH-012",
+      "quadrant": "INVEST_GROW",
+      "attractiveness": 4.62,
+      "strength": 4.46,
+      "outcome": 0.1712
+    },
+    {
+      "label": "SYNTH-013",
+      "quadrant": "SELECTIVE_INVEST",
+      "attractiveness": 2.98,
+      "strength": 2.77,
+      "outcome": -0.1151
+    },
+    {
+      "label": "SYNTH-014",
+      "quadrant": "SELECTIVE_INVEST",
+      "attractiveness": 2.99,
+      "strength": 3.29,
+      "outcome": -0.0856
+    },
+    {
+      "label": "SYNTH-015",
+      "quadrant": "SELECTIVE_INVEST",
+      "attractiveness": 3.27,
+      "strength": 3.16,
+      "outcome": 0.1457
+    },
+    {
+      "label": "SYNTH-016",
+      "quadrant": "SELECTIVE_INVEST",
+      "attractiveness": 2.98,
+      "strength": 2.81,
+      "outcome": -0.0742
+    },
+    {
+      "label": "SYNTH-017",
+      "quadrant": "SELECTIVE_INVEST",
+      "attractiveness": 2.81,
+      "strength": 3.08,
+      "outcome": -0.1199
+    },
+    {
+      "label": "SYNTH-018",
+      "quadrant": "SELECTIVE_INVEST",
+      "attractiveness": 2.81,
+      "strength": 2.82,
+      "outcome": 0.1825
+    },
+    {
+      "label": "SYNTH-019",
+      "quadrant": "SELECTIVE_INVEST",
+      "attractiveness": 3.15,
+      "strength": 3.02,
+      "outcome": 0.1517
+    },
+    {
+      "label": "SYNTH-020",
+      "quadrant": "SELECTIVE_INVEST",
+      "attractiveness": 3.2,
+      "strength": 3.02,
+      "outcome": 0.1179
+    },
+    {
+      "label": "SYNTH-021",
+      "quadrant": "SELECTIVE_INVEST",
+      "attractiveness": 2.72,
+      "strength": 2.66,
+      "outcome": 0.2085
+    },
+    {
+      "label": "SYNTH-022",
+      "quadrant": "SELECTIVE_INVEST",
+      "attractiveness": 3.07,
+      "strength": 3.05,
+      "outcome": 0.0906
+    },
+    {
+      "label": "SYNTH-023",
+      "quadrant": "SELECTIVE_INVEST",
+      "attractiveness": 3.21,
+      "strength": 2.83,
+      "outcome": 0.1216
+    },
+    {
+      "label": "SYNTH-024",
+      "quadrant": "SELECTIVE_INVEST",
+      "attractiveness": 2.8,
+      "strength": 2.95,
+      "outcome": -0.046
+    },
+    {
+      "label": "SYNTH-025",
+      "quadrant": "SELECTIVE_INVEST",
+      "attractiveness": 2.82,
+      "strength": 3.21,
+      "outcome": 0.166
+    },
+    {
+      "label": "SYNTH-026",
+      "quadrant": "SELECTIVE_INVEST",
+      "attractiveness": 3.34,
+      "strength": 3.0,
+      "outcome": -0.1034
+    },
+    {
+      "label": "SYNTH-027",
+      "quadrant": "HARVEST_DIVEST",
+      "attractiveness": 1.82,
+      "strength": 1.73,
+      "outcome": -0.2938
+    },
+    {
+      "label": "SYNTH-028",
+      "quadrant": "HARVEST_DIVEST",
+      "attractiveness": 1.71,
+      "strength": 1.91,
+      "outcome": 0.0068
+    },
+    {
+      "label": "SYNTH-029",
+      "quadrant": "HARVEST_DIVEST",
+      "attractiveness": 1.76,
+      "strength": 2.02,
+      "outcome": -0.0962
+    },
+    {
+      "label": "SYNTH-030",
+      "quadrant": "HARVEST_DIVEST",
+      "attractiveness": 1.57,
+      "strength": 2.29,
+      "outcome": -0.2253
+    },
+    {
+      "label": "SYNTH-031",
+      "quadrant": "HARVEST_DIVEST",
+      "attractiveness": 2.15,
+      "strength": 1.68,
+      "outcome": -0.0933
+    },
+    {
+      "label": "SYNTH-032",
+      "quadrant": "HARVEST_DIVEST",
+      "attractiveness": 1.78,
+      "strength": 2.22,
+      "outcome": -0.0037
+    },
+    {
+      "label": "SYNTH-033",
+      "quadrant": "HARVEST_DIVEST",
+      "attractiveness": 1.77,
+      "strength": 1.79,
+      "outcome": -0.2442
+    },
+    {
+      "label": "SYNTH-034",
+      "quadrant": "HARVEST_DIVEST",
+      "attractiveness": 1.98,
+      "strength": 2.28,
+      "outcome": 0.0414
+    },
+    {
+      "label": "SYNTH-035",
+      "quadrant": "HARVEST_DIVEST",
+      "attractiveness": 2.24,
+      "strength": 1.82,
+      "outcome": 0.0283
+    },
+    {
+      "label": "SYNTH-036",
+      "quadrant": "HARVEST_DIVEST",
+      "attractiveness": 2.02,
+      "strength": 2.12,
+      "outcome": -0.03
+    }
+  ]
+}

@@ -216,3 +216,155 @@ recorded when the cap fires.
   fences, and every fallback path including a monkeypatched exploding client.
 - `test_api.py` — the HTTP contract end to end against SQLite, including the
   stage-ordering 409s and input validation rejections.
+
+---
+
+# V2
+
+Four capabilities, one schema change, and the retirement of `create_all`.
+
+## What V2 adds and why
+
+| Addition | The V1 gap it closes |
+|---|---|
+| Porter's Five Forces | V1 scored the firm's position but never the industry structure it sits in. |
+| Sensitivity analysis | V1 flagged `borderline` but could not say *which input* the verdict hung on. |
+| What-if scenarios | V1 could score one state of the world. A committee argues about several. |
+| Multi-period tracking | V1 produced a photograph. The question is usually the direction of travel. |
+| Alembic migrations | V1's `create_all` was documented as adequate "until a column changes shape". It did. |
+| Validation harness | V1's README admitted the framework had never been checked. Now it is computable. |
+
+## Schema change
+
+Three nullable columns on `companies` — `entity_key`, `period_label`,
+`period_end` — plus two new tables. Purely additive: every V1 row stays valid
+and simply has no timeline. Nothing is backfilled, because inventing a period
+label for a row that never had one would be fabricating data, and a NULL that
+reads "this was a standalone snapshot" is true.
+
+A row in `companies` is therefore a company *as reported for one period*, not a
+company. Two rows sharing an `entity_key` are the same firm at two dates. The
+alternative — a separate `entities` table — would have meant rewriting every
+existing foreign key for a feature that works fine without it.
+
+**`create_all` is gone.** Alembic owns the schema, the container entrypoint runs
+`alembic upgrade head` before uvicorn, and `_assert_schema_present()` turns an
+unmigrated database into a loud startup failure instead of a missing-column
+error on the first request. An existing V1 database needs
+`alembic stamp 0001_v1_baseline` once before `upgrade head`.
+
+## Sensitivity: why it is solved, not searched
+
+The attractiveness score is a weighted sum:
+
+```
+A = w_g·g + w_s·s + w_p·p + w_i·(6 − i)
+```
+
+so `∂A/∂axis` is just that axis's weight, negative for intensity because it
+enters inverted. The minimum single-axis change that reaches a boundary is
+therefore exact:
+
+```
+required_delta = (threshold − A) / (∂A/∂axis)
+```
+
+Brute-force perturbation would give an approximation whose resolution is
+whatever step size I happened to pick. This gives the answer. Two things the
+solve has to respect or it produces impossible advice:
+
+1. **Axis bounds.** Every axis is 1-5, so an axis at 4.2 has 0.8 of headroom.
+   A solve demanding +1.5 is reported as unreachable, not as an actionable
+   small number.
+2. **The quadrant rule is conjunctive.** `INVEST_GROW` needs *both* axes past
+   the high threshold, so crossing one alone may change nothing. Every
+   candidate is verified by re-placing the quadrant rather than assumed from
+   the threshold crossing.
+
+## Porter's, and the honest problem with implementing it
+
+Porter's framework is qualitative. Three of the five forces have no defensible
+proxy in the data this system holds — a balance sheet says nothing about how
+easily a customer could switch to a substitute.
+
+| Force | Basis |
+|---|---|
+| Competitive rivalry | **Computed.** The same HHI-derived intensity the matrix uses. |
+| Threat of new entrants | **Partially computed.** Industry margin sets the prize, HHI indicates entrenchment; analyst inputs adjust for barriers. |
+| Supplier power | **Partially computed.** `1 − gross margin` bounds input-cost exposure; analyst supplier concentration adjusts. |
+| Buyer power | **Analyst input or nothing.** |
+| Threat of substitutes | **Analyst input or nothing.** |
+
+A force with neither a proxy nor an input returns `UNAVAILABLE`. Defaulting it
+to 3 would be a guess rendered in the same typeface as a computed HHI, which is
+the failure mode the whole project exists to avoid.
+
+Rivalry deliberately **reuses** the matrix's intensity rather than deriving a
+second one. Two different rivalry numbers on one dashboard, each correct by its
+own logic, is worse than one number used twice.
+
+The scale also runs the *opposite* way to the GE-McKinsey axis — higher means a
+stronger force, i.e. worse for incumbents. That is stated in every payload,
+because silently flipping a scale between two frameworks on the same screen is
+how a reader misreads both.
+
+## Validation, and what the harness does not prove
+
+`POST /validation/backtest` takes a panel of companies scored at time T with a
+realised outcome at T+n and reports three things: quadrant separation, Spearman
+rho against `attractiveness × strength`, and a permutation p-value.
+
+**The permutation test is the point.** Outcomes are shuffled across companies
+with quadrant labels fixed, so the null is "quadrant carries no information".
+Without it, a gap between group means on a twenty-company panel is
+indistinguishable from noise — and reporting that gap as validation is exactly
+how a model that predicts nothing gets called validated. The p-value uses
+add-one smoothing, because a finite permutation test cannot establish p = 0.
+
+Position score is `attractiveness × strength`, a product rather than a sum,
+because the GE-McKinsey rule is conjunctive and a sum cannot distinguish
+"strong on one axis, weak on the other" from "middling on both".
+
+**No real panel ships with this.** `data/validation/` holds a generated file,
+labelled as such, and instructions for assembling a real one from EDGAR. Any
+number computed from generated data describes the harness, not the framework.
+
+## Bugs found while building V2
+
+**The sensitivity verdict named an unreachable axis as "most fragile".** The
+end-to-end smoke run produced `verdict: FRAGILE` while the top of the ranked
+axis list showed `required_delta: null`. Both were correct in isolation: with
+attractiveness at 4.0 and strength at 3.25, no attractiveness axis can change
+the quadrant — the verdict hangs entirely on strength, which is reported
+separately and so was not in the ranked list at all. Any consumer reading
+`axes[0]` as "the thing to worry about" got the opposite of the truth.
+
+Fixed by computing an explicit `binding_constraint` across *all* inputs
+including strength, with a note telling the reader to prefer it over the list.
+A regression test constructs that exact position and asserts the binding
+constraint is the strength axis while every attractiveness axis is unreachable.
+
+**A no-op scenario reported a full delta of zeros.** `_diff` emitted every
+numeric field whether or not it changed, so the "this scenario changed nothing"
+warning could never fire — the guard checked `if not delta`, and the dict was
+never empty. A typo'd override that silently did nothing would therefore render
+as a scenario showing no change, which reads as *evidence the verdict is
+stable*: the most dangerous possible failure for a what-if feature. Fixed by
+omitting unchanged fields, which also stops one real movement being buried in
+seven zeros.
+
+## Deliberate limitations, still
+
+- **Still no authentication.** Unchanged from V1 and still correct for a
+  single-user analysis tool.
+- **Scenarios are one level deep.** No scenario-of-a-scenario, and no
+  probability weighting across a scenario set. Both are real extensions; neither
+  is needed to answer "what if the market cools".
+- **The Porter composite is arithmetic on judgement** whenever most of its
+  forces came from analyst input. The `source_breakdown` in the basis is there
+  so a reader can see how much of the number is measurement.
+- **Trends are first-to-last differences, not fitted slopes.** With the two to
+  five periods a filing history realistically provides, a regression slope
+  carries a standard error wider than the effect it measures.
+- **The validation harness has never been run on real data by me.** It is a
+  harness, and the README says so.

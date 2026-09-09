@@ -2,9 +2,9 @@
 
 [![CI](https://github.com/IshaanS0112/StrategySphere-AI/actions/workflows/ci.yml/badge.svg)](https://github.com/IshaanS0112/StrategySphere-AI/actions/workflows/ci.yml) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-**Executive decision intelligence — a scored SWOT engine, a GE-McKinsey market attractiveness matrix, and a cost-plus/competitor-benchmarked pricing model. The AI writes the summary; it does not decide the strategy.**
+**Executive decision intelligence — a scored SWOT engine, a GE-McKinsey market attractiveness matrix, Porter's Five Forces, a cost-plus/competitor-benchmarked pricing model, and analytic sensitivity analysis. The AI writes the summary; it does not decide the strategy.**
 
-FastAPI · PostgreSQL · React + TypeScript · Docker
+FastAPI · PostgreSQL · Alembic · React + TypeScript · Docker
 
 ---
 
@@ -26,6 +26,14 @@ I also wanted the project to survive one specific question, which is the questio
 4. **Pricing** — a cost-plus anchor blended with the competitor benchmark, adjusted for the shared-feature quality gap, clamped, and floored at cost.
 5. **Executive report** — every figure above is frozen into a structured JSON context *first*; the LLM then narrates that context under a JSON-only contract, and any factor it cites that isn't in the context is discarded.
 
+### Added in V2
+
+6. **Porter's Five Forces** — rivalry computed from the HHI already derived for the matrix; entry threat and supplier power partly computed from industry margin and cost share; buyer power and substitutes have no proxy in this data and are analyst input **or nothing**. Every force carries its source.
+7. **Sensitivity analysis** — the exact minimum change in any single input that would flip the quadrant, solved analytically rather than searched.
+8. **What-if scenarios** — named override sets recomputed against a non-mutating copy and diffed against the stored baseline.
+9. **Multi-period tracking** — the same company scored across reporting periods, with quadrant migration plotted on the same grid.
+10. **Validation harness** — a retrospective backtest with a permutation null, closing the gap V1's README admitted to.
+
 ---
 
 ## The line between computed and narrated
@@ -38,6 +46,10 @@ This is the design decision the rest of the project hangs off.
 | HHI, concentration band, competitive intensity | `market_structure.py` |
 | Attractiveness score, strength score, quadrant | Weighted sum — `attractiveness_matrix.py` |
 | Recommended price, range, implied margin | `pricing_engine.py` |
+| Five forces, and which of them could be computed at all | `porters_engine.py` |
+| Exact quadrant flip distances | Calculus on a linear model — `sensitivity.py` |
+| Scenario deltas, period trends | `scenario_engine.py`, `timeline.py` |
+| Separation, rank correlation, permutation p-value | `validation.py` |
 | Readable narrative | LLM — `report_generator.py` |
 
 Every number in a generated report exists in `structured_context` before any model is called. That context is stored in the database, returned by `GET /companies/{id}/strategy-report`, and rendered in the UI behind a **"show structured context (pre-LLM)"** toggle. Any factor name the model cites that isn't in the grid is dropped and counted. If the model call fails, times out, or returns malformed JSON, a template produces the same report from the same numbers.
@@ -65,7 +77,25 @@ Two of those rows show the guard rails doing their job rather than the happy pat
 - `premium_saas` returns a **56.9% implied margin against a 45% target**. That is correct, not a bug: rivals price well above this company's cost-plus anchor, so the blended price lands above it. The engine reports the realised margin precisely so the gap is visible.
 - `commodity_manufacturer` has its **range floored at the cost base** (39.00) — the raw band bottom was 37.89, below cost — which drops the recommendation to `MEDIUM` confidence with the reason attached.
 
-`pytest`: **137 tests**, no database and no network required for the engine tests.
+**V2 additions, same three cases.**
+
+| Case | Sensitivity | Binding constraint | Attr. axes reachable | Porter composite |
+|---|---|---|---|---|
+| `premium_saas` | `FRAGILE` | strength **−0.17** → `SELECTIVE_INVEST` | 3 of 4 | 3.44 `MODERATE` (3/5 scored) |
+| `contested_retail` | `ROBUST` | **none reachable** | 0 of 4 | 4.05 `UNATTRACTIVE` (3/5) |
+| `commodity_manufacturer` | `ROBUST` | strength **+1.50** → `SELECTIVE_INVEST` | 1 of 4 | 4.18 `UNATTRACTIVE` (3/5) |
+
+Three different shapes of answer, and each means something distinct:
+
+- **`premium_saas` is fragile on strength.** Attractiveness sits at 3.8, comfortably past the 3.5 threshold; strength at 3.667 is only 0.17 clear of it. A sixth of a point on one axis moves the verdict out of `INVEST_GROW`.
+- **`contested_retail` cannot be flipped by any single input.** It sits mid-grid at 2.50 / 2.67, and `SELECTIVE_INVEST` is the residual quadrant — leaving it needs *both* axes past a threshold together, which no one input can do. `ROBUST` here means "structurally stuck", not "confidently good".
+- **`commodity_manufacturer` needs a 1.5-point strength recovery** to escape `HARVEST_DIVEST`, which on a 1-5 axis is an enormous move.
+
+Only 3 of 5 forces score on every case: buyer power and substitutes have no proxy in this data and return `UNAVAILABLE` rather than a default.
+
+The binding constraint is reported separately from the ranked axis list on purpose. On `contested_retail` every attractiveness axis is unreachable, and on `premium_saas` the constraint is the strength axis — which is not in that list at all. Reading `axes[0]` as "the thing to worry about" gave the opposite of the truth, and was a live bug until an end-to-end run surfaced it.
+
+`pytest`: **225 tests**, no database and no network required for the engine tests.
 
 ---
 
@@ -75,7 +105,11 @@ Two of those rows show the guard rails doing their job rather than the happy pat
 
 The three case files in `data/case_studies/` are **illustrative composites, not real companies** — they exist so the pipeline can be exercised in one click, and every one of them says so in its own `data_source` field, which the UI displays on every downstream result. The built-in industry benchmark table is likewise **placeholder round numbers, not sourced data**; supplying competitor financials so the engine uses a peer-set median is the intended path, and `data/case_studies/SOURCES.md` explains how to swap in real figures from filings.
 
-`docs/architecture.md` has the full "what's real vs simulated" breakdown, the bugs found while building it, and the two places the implementation deliberately departs from my original design note.
+The Porter composite is **a project-defined average, not part of Porter's framework** — Porter does not weight or average the forces, and the API says so in the payload. Two of the five forces have no proxy in this data at all and come back `UNAVAILABLE` rather than defaulting to a middle value.
+
+The backtest harness ships with **no real panel**. `data/validation/` contains a generated demonstration file, clearly labelled, plus instructions for assembling a real one from filings. Running the harness on generated data proves the harness works and nothing else.
+
+`docs/architecture.md` has the full "what's real vs simulated" breakdown, the bugs found while building it, and the places the implementation deliberately departs from my original design note.
 
 ---
 
@@ -106,8 +140,19 @@ python backend/scripts/load_case_study.py data/case_studies/premium_saas.json \
 cd backend
 pip install -r requirements-dev.txt
 cp .env.example .env          # set DATABASE_URL, or use SQLite for a quick look
-pytest                        # 137 tests, no database needed
-DATABASE_URL="sqlite:///./local.db" uvicorn app.main:app --reload
+pytest                        # 225 tests, no database needed
+
+# V2 owns its schema with Alembic; the app no longer creates tables itself.
+export DATABASE_URL="sqlite:///./local.db"
+alembic upgrade head
+uvicorn app.main:app --reload
+```
+
+Upgrading a database that V1 created with `create_all`? Record the baseline
+once, then migrate:
+
+```bash
+alembic stamp 0001_v1_baseline && alembic upgrade head
 ```
 
 The models declare JSONB and UUID as dialect *variants*, so the whole app runs on SQLite for local work and on Postgres in deployment.
@@ -146,6 +191,13 @@ POST   /companies/{id}/swot-analysis             Run the SWOT scoring engine
 POST   /companies/{id}/market-attractiveness     Run the GE-McKinsey matrix
 POST   /companies/{id}/pricing-recommendation    Run the pricing engine
 POST   /companies/{id}/generate-strategy-report  Narrate the structured context
+
+POST   /companies/{id}/porters-analysis         Score the five forces
+GET    /companies/{id}/sensitivity              Exact quadrant flip distances
+POST   /companies/{id}/scenarios                Recompute under overrides
+GET    /companies/{id}/scenarios  ·  DELETE /companies/{id}/scenarios/{sid}
+GET    /entities  ·  GET /entities/{key}/timeline    Multi-period migration
+POST   /validation/backtest                     Score a labelled panel
 ```
 
 Each `POST` has a matching `GET` returning the latest stored result. Stage ordering is enforced with `409` rather than a silent recompute — the matrix must be built on the SWOT grid the user actually saw.
@@ -169,8 +221,14 @@ Cost-plus anchor blended 50/50 with the competitor mean, multiplied by a value-a
 **"Where does the data come from?"**
 Whatever you supply, recorded in a required `data_source` field. The shipped cases are labelled composites. No scraping — see `docs/architecture.md`.
 
+**"How do you know the quadrant isn't just noise?"**
+I solve for it. The attractiveness score is linear in its axes, so `dA/d(axis)` is just the weight, and the minimum single-input change that reaches a boundary is `(threshold − A) / derivative` — exact, with no perturbation step to choose. The result names the *binding constraint*: the one input the verdict actually hangs on, which is frequently not the highest-weighted one.
+
+**"Porter's Five Forces from a balance sheet? Three of those aren't in there."**
+Correct, and that's the interesting part. Rivalry is computed from HHI. Entry threat and supplier power are partly computed — industry margin sets the size of the prize, `1 − gross margin` bounds supplier exposure. Buyer power and substitutes have no honest proxy, so they are analyst input **or `UNAVAILABLE`**. Every force carries a `source` field, and the composite is labelled a project-defined average rather than a Porter output.
+
 **"How would you validate the attractiveness score against real outcomes?"**
-I haven't, and the README says so. The honest test is a retrospective: score a set of business units at time T from their filings, then check whether the `HARVEST_DIVEST` set actually underperformed the `INVEST_GROW` set over the following three years. That needs a labelled panel I don't have.
+V2 makes it computable: `POST /validation/backtest` takes a labelled panel, reports quadrant separation and Spearman rho, and runs a permutation null with the outcomes shuffled. The p-value is the part that matters — on twenty companies across three quadrants, a several-point gap between group means arises constantly by chance. **I have not run it on a real panel**; the harness ships with generated data and instructions for building one from filings. And even a significant result would be association, not causation, until it beats a baseline model using revenue growth alone.
 
 ---
 
@@ -179,11 +237,16 @@ I haven't, and the README says so. The honest test is a retrospective: score a s
 ```
 backend/app/services/    swot_engine · market_structure · attractiveness_matrix
                          pricing_engine · report_generator · analysis_pipeline
+                         porters_engine · sensitivity · scenario_engine
+                         timeline · validation
 backend/app/{models,schemas,routers,db}/
-backend/tests/           137 tests, engine tests need no database
-backend/scripts/         load_case_study.py
+backend/alembic/         0001 V1 baseline · 0002 V2 periods, porters, scenarios
+backend/tests/           225 tests, engine tests need no database
+backend/scripts/         load_case_study.py · run_validation.py
 frontend/src/            SWOTGrid · AttractivenessMatrix · PricingView · ReportView
+                         PortersView · SensitivityPanel · ScenarioPanel · TimelineView
 data/case_studies/       illustrative composites + SOURCES.md
+data/validation/         generated demo panel + how to build a real one
 docs/architecture.md     what's real vs simulated, bugs found, design deviations
 ```
 
