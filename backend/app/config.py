@@ -95,6 +95,40 @@ class Settings(BaseSettings):
     # Above this coefficient of variation the result is flagged low-confidence.
     pricing_dispersion_warning_cv: float = 0.35
 
+    # --- V2: Porter's Five Forces ------------------------------------------
+    # Porter does not weight the forces - the framework is qualitative and the
+    # five are meant to be read individually. The composite below exists only
+    # so the forces can be summarised in one number for the UI, and it is
+    # labelled a project-defined composite everywhere it appears. Equal weights
+    # because there is no published basis for any other choice.
+    porter_composite_equal_weights: bool = True
+    # A force is only reported when at least this fraction of its inputs are
+    # present. Below it the force comes back UNAVAILABLE rather than guessed.
+    porter_min_input_coverage: float = 0.5
+
+    # Industry attractiveness bands on the mean-force scale (1-5, higher =
+    # stronger force = worse for incumbents).
+    porter_attractive_below: float = 2.5
+    porter_unattractive_above: float = 3.5
+
+    # --- V2: Sensitivity ----------------------------------------------------
+    # Each axis is scored 1-5, so the largest possible single-axis move is 4.0.
+    # A flip that needs more than this is not reachable at all.
+    sensitivity_axis_span: float = 4.0
+    # A flip requiring less than this much movement on a 1-5 axis marks the
+    # placement FRAGILE. 0.5 is half a band - well inside normal input error.
+    sensitivity_fragile_threshold: float = 0.5
+    sensitivity_knife_edge_threshold: float = 0.15
+
+    # --- V2: Multi-period ---------------------------------------------------
+    # Change in a 1-5 score below this is noise, not a trend.
+    trend_material_delta: float = 0.25
+
+    # --- V2: Validation harness --------------------------------------------
+    # Permutation test iterations for the quadrant-separation null.
+    validation_permutations: int = 2000
+    validation_random_seed: int = 20260908
+
     @property
     def cors_origin_list(self) -> list[str]:
         return [o.strip() for o in self.cors_origins.split(",") if o.strip()]
@@ -133,6 +167,14 @@ class Settings(BaseSettings):
 
         if self.pricing_default_margin_basis not in {"MARGIN", "MARKUP"}:
             raise ValueError("pricing_default_margin_basis must be MARGIN or MARKUP")
+
+        if self.porter_attractive_below >= self.porter_unattractive_above:
+            raise ValueError(
+                "porter_attractive_below must sit under porter_unattractive_above"
+            )
+
+        if not 0.0 < self.porter_min_input_coverage <= 1.0:
+            raise ValueError("porter_min_input_coverage must be in (0, 1]")
 
         return self
 
