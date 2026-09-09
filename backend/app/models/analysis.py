@@ -11,7 +11,7 @@ import uuid
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import DateTime, Float, ForeignKey, String, Uuid, func
+from sqlalchemy import DateTime, Float, ForeignKey, Integer, String, Uuid, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.session import Base, JsonBlob, utc_now
@@ -124,3 +124,77 @@ class StrategyReport(Base):
     )
 
     company: Mapped["Company"] = relationship(back_populates="reports")
+
+
+# --------------------------------------------------------------------------
+# V2
+# --------------------------------------------------------------------------
+
+
+class PortersAnalysis(Base):
+    """Porter's Five Forces (Porter, 1979).
+
+    Deliberately *not* collapsed into a single verdict column. Porter's point is
+    that the five forces are read individually — an industry can be brutal on
+    rivalry and comfortable on supplier power, and averaging that away destroys
+    the only thing the framework is for. ``composite_score`` exists so the UI
+    has one number to sort by, and it is labelled a project-defined composite
+    everywhere it surfaces.
+    """
+
+    __tablename__ = "porters_analyses"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    company_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("companies.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+
+    # [{force, score, source, evidence, inputs_used, inputs_missing}] - one per
+    # force, including the ones that came back UNAVAILABLE.
+    forces: Mapped[list] = mapped_column(JsonBlob, nullable=False, default=list)
+
+    # Mean of the forces that could be scored. Null when fewer than two were.
+    composite_score: Mapped[float | None] = mapped_column(Float)
+    industry_attractiveness: Mapped[str | None] = mapped_column(String(20))
+    forces_scored: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+
+    calculation_basis: Mapped[dict] = mapped_column(JsonBlob, nullable=False, default=dict)
+    generated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utc_now, server_default=func.now()
+    )
+
+    company: Mapped["Company"] = relationship(back_populates="porters_analyses")
+
+
+class Scenario(Base):
+    """A named set of input overrides and the result of recomputing under them.
+
+    The overrides are stored rather than the mutated inputs, so a scenario is
+    always readable as a delta from the baseline it was run against. Running a
+    scenario never touches the company row — the pipeline operates on a copy.
+    """
+
+    __tablename__ = "scenarios"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    company_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("companies.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    description: Mapped[str | None] = mapped_column(String(1000))
+
+    # {"market_data": {...}, "financial_data": {...}, "competitors": [...]}
+    overrides: Mapped[dict] = mapped_column(JsonBlob, nullable=False, default=dict)
+
+    # The recomputed matrix result, and the field-by-field delta from baseline.
+    baseline_snapshot: Mapped[dict] = mapped_column(JsonBlob, nullable=False, default=dict)
+    scenario_result: Mapped[dict] = mapped_column(JsonBlob, nullable=False, default=dict)
+    delta: Mapped[dict] = mapped_column(JsonBlob, nullable=False, default=dict)
+    quadrant_changed: Mapped[bool] = mapped_column(default=False, nullable=False)
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utc_now, server_default=func.now()
+    )
+
+    company: Mapped["Company"] = relationship(back_populates="scenarios")

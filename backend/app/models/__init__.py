@@ -1,6 +1,8 @@
 from app.models.analysis import (
     MarketAttractiveness,
+    PortersAnalysis,
     PricingRecommendation,
+    Scenario,
     StrategyReport,
     SwotAnalysis,
 )
@@ -11,7 +13,9 @@ __all__ = [
     "Company",
     "Competitor",
     "MarketAttractiveness",
+    "PortersAnalysis",
     "PricingRecommendation",
+    "Scenario",
     "StrategyReport",
     "SwotAnalysis",
 ]

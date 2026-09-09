@@ -10,10 +10,10 @@ number from a typo.
 from __future__ import annotations
 
 import uuid
-from datetime import datetime
+from datetime import date, datetime
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from app.enums import MarginBasis
 
@@ -36,6 +36,38 @@ def _validate_feature_scores(scores: dict[str, Any]) -> dict[str, float]:
     return cleaned
 
 
+class PeriodFields(BaseModel):
+    """Optional period identity. Absent means a standalone snapshot (V1 behaviour)."""
+
+    entity_key: str | None = Field(
+        default=None,
+        max_length=120,
+        pattern=r"^[a-z0-9][a-z0-9-]*$",
+        description=(
+            "Slug shared by every period of the same real company, e.g. "
+            "'northwind-analytics'. Lowercase, digits and hyphens."
+        ),
+    )
+    period_label: str | None = Field(default=None, max_length=40, examples=["FY2024"])
+    period_end: date | None = Field(
+        default=None,
+        description=(
+            "Period end date. Required for a company to appear in a timeline - "
+            "labels cannot be sorted reliably."
+        ),
+    )
+
+    @model_validator(mode="after")
+    def _period_needs_a_date(self) -> "PeriodFields":
+        if self.entity_key and self.period_end is None:
+            raise ValueError(
+                "entity_key was supplied without period_end. A period with no end "
+                "date cannot be ordered against the others, so it would be silently "
+                "dropped from the timeline."
+            )
+        return self
+
+
 class QualitativeFactorIn(BaseModel):
     factor: str = Field(min_length=1, max_length=200)
     category: Literal["STRENGTH", "WEAKNESS", "OPPORTUNITY", "THREAT"]
@@ -43,7 +75,7 @@ class QualitativeFactorIn(BaseModel):
     impact_score: int = Field(ge=1, le=5)
 
 
-class CompanyCreate(BaseModel):
+class CompanyCreate(PeriodFields):
     name: str = Field(min_length=1, max_length=200)
     industry: str | None = Field(default=None, max_length=100)
     financial_data: dict[str, Any] = Field(default_factory=dict)
@@ -79,6 +111,9 @@ class CompanyOut(BaseModel):
     feature_scores: dict[str, Any]
     qualitative_inputs: list[Any]
     data_source: str | None
+    entity_key: str | None
+    period_label: str | None
+    period_end: date | None
     created_at: datetime | None
 
 
@@ -180,3 +215,72 @@ class StrategyReportOut(BaseModel):
     ai_narrative: dict[str, Any] | None
     narrative_source: str | None
     generated_at: datetime | None
+
+
+# --------------------------------------------------------------------------
+# V2
+# --------------------------------------------------------------------------
+
+
+
+class PortersAnalysisOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    company_id: uuid.UUID
+    forces: list[Any]
+    composite_score: float | None
+    industry_attractiveness: str | None
+    forces_scored: int
+    calculation_basis: dict[str, Any]
+    generated_at: datetime | None
+
+
+class CompetitorOverride(BaseModel):
+    op: Literal["add", "remove", "update"]
+    competitor_name: str | None = Field(default=None, max_length=200)
+    price_point: float | None = Field(default=None, gt=0)
+    market_share_pct: float | None = Field(default=None, ge=0, le=100)
+    feature_scores: dict[str, float] = Field(default_factory=dict)
+    financial_data: dict[str, Any] = Field(default_factory=dict)
+
+
+class ScenarioOverrides(BaseModel):
+    market_data: dict[str, Any] = Field(default_factory=dict)
+    financial_data: dict[str, Any] = Field(default_factory=dict)
+    competitors: list[CompetitorOverride] = Field(default_factory=list)
+
+
+class ScenarioCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=200)
+    description: str | None = Field(default=None, max_length=1000)
+    overrides: ScenarioOverrides
+
+
+class ScenarioOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    company_id: uuid.UUID
+    name: str
+    description: str | None
+    overrides: dict[str, Any]
+    baseline_snapshot: dict[str, Any]
+    scenario_result: dict[str, Any]
+    delta: dict[str, Any]
+    quadrant_changed: bool
+    created_at: datetime | None
+
+
+class ValidationRow(BaseModel):
+    label: str = Field(default="", max_length=200)
+    quadrant: Literal["INVEST_GROW", "SELECTIVE_INVEST", "HARVEST_DIVEST"]
+    attractiveness: float = Field(ge=1, le=5)
+    strength: float = Field(ge=1, le=5)
+    outcome: float = Field(
+        description="Realised outcome at T+n: revenue CAGR, TSR, margin change - any ordinal measure"
+    )
+
+
+class ValidationRequest(BaseModel):
+    panel: list[ValidationRow] = Field(min_length=3)

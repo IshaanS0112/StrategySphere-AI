@@ -1,8 +1,8 @@
 import uuid
-from datetime import datetime
+from datetime import date, datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import DateTime, String, Uuid, func
+from sqlalchemy import Date, DateTime, String, Uuid, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.session import Base, JsonBlob, utc_now
@@ -10,7 +10,9 @@ from app.db.session import Base, JsonBlob, utc_now
 if TYPE_CHECKING:  # pragma: no cover - typing only
     from app.models.analysis import (
         MarketAttractiveness,
+        PortersAnalysis,
         PricingRecommendation,
+        Scenario,
         StrategyReport,
         SwotAnalysis,
     )
@@ -49,6 +51,20 @@ class Company(Base):
     # no provenance is not a case study.
     data_source: Mapped[str | None] = mapped_column(String(500))
 
+    # --- V2: the period dimension ------------------------------------------
+    # A row in this table is a company *as reported for one period*, not a
+    # company. Two rows sharing an entity_key are the same real firm at two
+    # points in time, which is what makes quadrant migration meaningful.
+    #
+    # Both columns are nullable so the migration is purely additive: every V1
+    # row stays valid and simply has no timeline. A company with no entity_key
+    # is a standalone snapshot, which is the V1 behaviour exactly.
+    entity_key: Mapped[str | None] = mapped_column(String(120), index=True)
+    period_label: Mapped[str | None] = mapped_column(String(40))     # "FY2024", "Q3-2025"
+    # Sort key for the timeline. Label alone will not order correctly:
+    # "FY2024" < "FY9999" is fine but "Q3-2025" vs "Q11-2025" is not.
+    period_end: Mapped[date | None] = mapped_column(Date)
+
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utc_now, server_default=func.now()
     )
@@ -70,6 +86,16 @@ class Company(Base):
         back_populates="company",
         cascade="all, delete-orphan",
         order_by="PricingRecommendation.calculated_at",
+    )
+    porters_analyses: Mapped[list["PortersAnalysis"]] = relationship(
+        back_populates="company",
+        cascade="all, delete-orphan",
+        order_by="PortersAnalysis.generated_at",
+    )
+    scenarios: Mapped[list["Scenario"]] = relationship(
+        back_populates="company",
+        cascade="all, delete-orphan",
+        order_by="Scenario.created_at",
     )
     reports: Mapped[list["StrategyReport"]] = relationship(
         back_populates="company",
