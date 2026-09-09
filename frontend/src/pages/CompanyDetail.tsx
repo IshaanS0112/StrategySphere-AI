@@ -6,16 +6,22 @@ import type {
   Company,
   Competitor,
   MarketAttractiveness,
+  PortersAnalysis,
   PricingRecommendation,
+  Scenario,
+  Sensitivity,
   StrategyReport,
   SwotAnalysis,
 } from "../api/types";
 import AttractivenessMatrix from "../components/AttractivenessMatrix";
+import PortersView from "../components/PortersView";
+import ScenarioPanel from "../components/ScenarioPanel";
+import SensitivityPanel from "../components/SensitivityPanel";
 import PricingView from "../components/PricingView";
 import ReportView from "../components/ReportView";
 import SWOTGrid from "../components/SWOTGrid";
 
-type Stage = "swot" | "matrix" | "pricing" | "report";
+type Stage = "swot" | "matrix" | "pricing" | "report" | "porters" | "scenario";
 
 function StageShell({
   index,
@@ -56,6 +62,9 @@ export default function CompanyDetail() {
   const [matrix, setMatrix] = useState<MarketAttractiveness | null>(null);
   const [pricing, setPricing] = useState<PricingRecommendation | null>(null);
   const [report, setReport] = useState<StrategyReport | null>(null);
+  const [porters, setPorters] = useState<PortersAnalysis | null>(null);
+  const [sensitivity, setSensitivity] = useState<Sensitivity | null>(null);
+  const [scenarios, setScenarios] = useState<Scenario[]>([]);
 
   const [costBase, setCostBase] = useState("100");
   const [margin, setMargin] = useState("40");
@@ -67,13 +76,15 @@ export default function CompanyDetail() {
   const load = useCallback(async () => {
     setError(null);
     try {
-      const [c, comps, s, m, p, r] = await Promise.all([
+      const [c, comps, s, m, p, r, pf, sc] = await Promise.all([
         api.getCompany(companyId),
         api.listCompetitors(companyId),
         optional(api.getSwot(companyId)),
         optional(api.getAttractiveness(companyId)),
         optional(api.getPricing(companyId)),
         optional(api.getReport(companyId)),
+        optional(api.getPorters(companyId)),
+        api.listScenarios(companyId),
       ]);
       setCompany(c);
       setCompetitors(comps);
@@ -81,6 +92,11 @@ export default function CompanyDetail() {
       setMatrix(m);
       setPricing(p);
       setReport(r);
+      setPorters(pf);
+      setScenarios(sc);
+      // Sensitivity is derived from the stored matrix row, so it only exists
+      // once the matrix has been run. A 409 here is expected, not an error.
+      setSensitivity(m ? await api.getSensitivity(companyId).catch(() => null) : null);
     } catch (err) {
       setError((err as Error).message);
     }
@@ -108,10 +124,37 @@ export default function CompanyDetail() {
         );
       }
       if (stage === "report") setReport(await api.runReport(companyId));
+      if (stage === "porters") setPorters(await api.runPorters(companyId));
     } catch (err) {
       setError((err as Error).message);
     } finally {
       setBusy(null);
+    }
+  }
+
+  async function createScenario(body: {
+    name: string;
+    description?: string;
+    overrides: Record<string, unknown>;
+  }) {
+    setBusy("scenario");
+    setError(null);
+    try {
+      const created = await api.createScenario(companyId, body);
+      setScenarios((prev) => [...prev, created]);
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function removeScenario(scenarioId: string) {
+    try {
+      await api.deleteScenario(companyId, scenarioId);
+      setScenarios((prev) => prev.filter((s) => s.id !== scenarioId));
+    } catch (err) {
+      setError((err as Error).message);
     }
   }
 
@@ -136,10 +179,24 @@ export default function CompanyDetail() {
               {company.industry ?? "industry unspecified"} · {competitors.length} competitor(s)
             </p>
           </div>
-          <Link to="/" className="btn-ghost">
-            All companies
-          </Link>
+          <div className="flex shrink-0 gap-2">
+            {company.entity_key && (
+              <Link to={`/entities/${company.entity_key}`} className="btn-ghost">
+                Timeline
+              </Link>
+            )}
+            <Link to="/" className="btn-ghost">
+              All companies
+            </Link>
+          </div>
         </div>
+        {company.period_label && (
+          <p className="mt-2 text-xs text-slate-400">
+            Period <span className="text-slate-200">{company.period_label}</span>
+            {company.period_end ? ` (ends ${company.period_end})` : ""} ·{" "}
+            <span className="font-mono text-slate-500">{company.entity_key}</span>
+          </p>
+        )}
         <p className="mt-3 border-t border-edge pt-3 text-xs leading-relaxed text-slate-500">
           <span className="text-slate-400">Source:</span> {company.data_source}
         </p>
@@ -269,6 +326,62 @@ export default function CompanyDetail() {
         ) : (
           <p className="panel p-5 text-sm text-slate-500">
             {matrix ? "Not generated yet." : "Blocked: there is nothing computed to narrate."}
+          </p>
+        )}
+      </StageShell>
+
+      <StageShell
+        index={5}
+        title="Porter's Five Forces"
+        subtitle="Industry structure rather than firm position, so it needs no upstream stage. Rivalry is computed from HHI; two of the five forces have no proxy in this data and are analyst input or nothing."
+        action={
+          <button
+            className="btn-primary"
+            onClick={() => void run("porters")}
+            disabled={busy !== null}
+          >
+            {busy === "porters" ? "Scoring…" : porters ? "Re-run" : "Run five forces"}
+          </button>
+        }
+      >
+        {porters ? (
+          <PortersView analysis={porters} />
+        ) : (
+          <p className="panel p-5 text-sm text-slate-500">Not run yet.</p>
+        )}
+      </StageShell>
+
+      <StageShell
+        index={6}
+        title="Sensitivity"
+        subtitle="The minimum change in any single input that would flip the quadrant. Solved exactly rather than searched, because the attractiveness score is linear in its axes."
+        action={<span className="text-xs text-slate-600">derived from the stored matrix</span>}
+      >
+        {sensitivity ? (
+          <SensitivityPanel result={sensitivity} />
+        ) : (
+          <p className="panel p-5 text-sm text-slate-500">
+            {matrix ? "Re-run the matrix to refresh this." : "Blocked: needs a matrix result."}
+          </p>
+        )}
+      </StageShell>
+
+      <StageShell
+        index={7}
+        title="What-if scenarios"
+        subtitle="Recompute the pipeline under a named set of overrides and diff against the stored baseline. Nothing here mutates the company."
+        action={<span className="text-xs text-slate-600">{scenarios.length} saved</span>}
+      >
+        {matrix ? (
+          <ScenarioPanel
+            scenarios={scenarios}
+            busy={busy === "scenario"}
+            onCreate={createScenario}
+            onDelete={removeScenario}
+          />
+        ) : (
+          <p className="panel p-5 text-sm text-slate-500">
+            Blocked: a scenario is a delta from a baseline placement.
           </p>
         )}
       </StageShell>

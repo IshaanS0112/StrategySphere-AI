@@ -3,9 +3,13 @@ import type {
   Competitor,
   MarketAttractiveness,
   Methodology,
+  PortersAnalysis,
   PricingRecommendation,
+  Scenario,
+  Sensitivity,
   StrategyReport,
   SwotAnalysis,
+  Timeline,
 } from "./types";
 
 // In dev, Vite proxies /api -> :8000. In the Docker image, nginx does the same.
@@ -128,4 +132,28 @@ export const api = {
   runReport: (id: string) =>
     request<StrategyReport>(`/companies/${id}/generate-strategy-report`, { method: "POST" }),
   getReport: (id: string) => request<StrategyReport>(`/companies/${id}/strategy-report`),
+
+  // --- V2 ---
+  runPorters: (id: string) =>
+    request<PortersAnalysis>(`/companies/${id}/porters-analysis`, { method: "POST" }),
+  getPorters: (id: string) => request<PortersAnalysis>(`/companies/${id}/porters-analysis`),
+
+  getSensitivity: (id: string) => request<Sensitivity>(`/companies/${id}/sensitivity`),
+
+  listScenarios: (id: string) => request<Scenario[]>(`/companies/${id}/scenarios`),
+  createScenario: (
+    id: string,
+    body: { name: string; description?: string; overrides: Record<string, unknown> },
+  ) =>
+    request<Scenario>(`/companies/${id}/scenarios`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  deleteScenario: (id: string, scenarioId: string) =>
+    request<void>(`/companies/${id}/scenarios/${scenarioId}`, { method: "DELETE" }),
+
+  listEntities: () =>
+    request<{ entity_key: string; name: string; periods: (string | null)[] }[]>("/entities"),
+  getTimeline: (entityKey: string) =>
+    request<Timeline>(`/entities/${entityKey}/timeline`),
 };

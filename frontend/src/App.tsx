@@ -3,6 +3,7 @@ import { Link, Route, Routes } from "react-router-dom";
 import CompanyDetail from "./pages/CompanyDetail";
 import Dashboard from "./pages/Dashboard";
 import NewCompany from "./pages/NewCompany";
+import TimelineView from "./pages/TimelineView";
 
 export default function App() {
   return (
@@ -13,7 +14,7 @@ export default function App() {
             Strategy<span className="text-accent">Sphere</span>
           </Link>
           <p className="mt-1 text-xs text-slate-500">
-            SWOT scoring · GE-McKinsey matrix · pricing engine · narrated, not decided, by an LLM
+            SWOT · GE-McKinsey · Porter’s Five Forces · pricing · sensitivity · scenarios
           </p>
         </div>
       </header>
@@ -22,6 +23,7 @@ export default function App() {
         <Route path="/" element={<Dashboard />} />
         <Route path="/new" element={<NewCompany />} />
         <Route path="/companies/:companyId" element={<CompanyDetail />} />
+        <Route path="/entities/:entityKey" element={<TimelineView />} />
         <Route
           path="*"
           element={

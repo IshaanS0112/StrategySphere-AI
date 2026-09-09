@@ -15,6 +15,9 @@ export interface SwotFactor {
 
 export interface Company {
   id: string;
+  entity_key?: string | null;
+  period_label?: string | null;
+  period_end?: string | null;
   name: string;
   industry: string | null;
   financial_data: Record<string, unknown>;
@@ -105,4 +108,96 @@ export interface Methodology {
   benchmark_provenance: string;
   llm_role: string;
   [key: string]: unknown;
+}
+
+// ---------------------------------------------------------------------------
+// V2
+// ---------------------------------------------------------------------------
+
+export type ForceSource =
+  | "COMPUTED"
+  | "PARTIALLY_COMPUTED"
+  | "ANALYST_INPUT"
+  | "UNAVAILABLE";
+
+export interface PorterForceEntry {
+  force: string;
+  score: number | null;
+  source: ForceSource;
+  evidence: string;
+  inputs_used: string[];
+  inputs_missing: string[];
+  scale: string;
+}
+
+export interface PortersAnalysis {
+  id: string;
+  company_id: string;
+  forces: PorterForceEntry[];
+  composite_score: number | null;
+  industry_attractiveness: "ATTRACTIVE" | "MODERATE" | "UNATTRACTIVE" | null;
+  forces_scored: number;
+  calculation_basis: Record<string, any>;
+  generated_at: string | null;
+}
+
+export interface AxisSensitivity {
+  axis: string;
+  current_value: number;
+  weight: number;
+  derivative: number;
+  required_delta: number | null;
+  required_value: number | null;
+  reachable: boolean;
+  resulting_quadrant: string | null;
+  headroom_up: number;
+  headroom_down: number;
+  note: string;
+}
+
+export interface Sensitivity {
+  company_id: string;
+  baseline_quadrant: Quadrant;
+  baseline_attractiveness: number;
+  baseline_strength: number;
+  verdict: "ROBUST" | "FRAGILE" | "KNIFE_EDGE";
+  axes: AxisSensitivity[];
+  strength_sensitivity: AxisSensitivity | null;
+  binding_constraint: AxisSensitivity | null;
+  calculation_basis: Record<string, any>;
+}
+
+export interface Scenario {
+  id: string;
+  company_id: string;
+  name: string;
+  description: string | null;
+  overrides: Record<string, any>;
+  baseline_snapshot: Record<string, any>;
+  scenario_result: Record<string, any>;
+  delta: Record<string, { baseline: any; scenario: any; delta?: number }>;
+  quadrant_changed: boolean;
+  created_at: string | null;
+}
+
+export interface TimelinePoint {
+  company_id: string;
+  period_label: string | null;
+  period_end: string | null;
+  attractiveness: number;
+  strength: number;
+  quadrant: Quadrant;
+  borderline: boolean;
+  data_source: string | null;
+}
+
+export interface Timeline {
+  entity_key: string;
+  points: TimelinePoint[];
+  excluded: { company_id: string; period_label: string | null; reason: string }[];
+  attractiveness_trend: "IMPROVING" | "STABLE" | "DETERIORATING" | "INSUFFICIENT_DATA";
+  strength_trend: "IMPROVING" | "STABLE" | "DETERIORATING" | "INSUFFICIENT_DATA";
+  quadrant_changes: Record<string, any>[];
+  summary: string;
+  calculation_basis: Record<string, any>;
 }
