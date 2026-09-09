@@ -16,11 +16,15 @@ from sqlalchemy.orm import Session
 
 from app.config import Settings
 from app.enums import MarginBasis
+from sqlalchemy import select
+
 from app.models import (
     Company,
     Competitor,
     MarketAttractiveness,
+    PortersAnalysis,
     PricingRecommendation,
+    Scenario,
     StrategyReport,
     SwotAnalysis,
 )
@@ -245,3 +249,169 @@ def run_report(db: Session, company: Company, settings: Settings) -> StrategyRep
     db.commit()
     db.refresh(row)
     return row
+
+
+# --------------------------------------------------------------------------
+# V2
+# --------------------------------------------------------------------------
+
+
+def run_porters(db: Session, company: Company, settings: Settings) -> PortersAnalysis:
+    from app.services.porters_engine import run_porters_analysis
+
+    concentration = _market_structure_for(company, settings)
+    result = run_porters_analysis(
+        financial_data=company.financial_data or {},
+        market_data=company.market_data or {},
+        concentration=concentration,
+        settings=settings,
+    )
+
+    basis = dict(result.calculation_basis)
+    basis["market_structure"] = concentration.basis
+
+    row = PortersAnalysis(
+        company_id=company.id,
+        forces=[f.to_dict() for f in result.forces],
+        composite_score=result.composite_score,
+        industry_attractiveness=(
+            result.industry_attractiveness.value if result.industry_attractiveness else None
+        ),
+        forces_scored=result.forces_scored,
+        calculation_basis=basis,
+    )
+    db.add(row)
+    db.commit()
+    db.refresh(row)
+    return row
+
+
+def compute_sensitivity(company: Company, settings: Settings) -> dict:
+    """Sensitivity over the latest stored matrix result.
+
+    Reads the persisted row rather than recomputing, for the same reason the
+    report generator does: the analysis must describe the placement the user is
+    looking at, not a fresh one that may have drifted.
+    """
+    from app.services.sensitivity import run_sensitivity_analysis
+
+    row = company.attractiveness_results[-1]
+    result = run_sensitivity_analysis(
+        market_growth_score=row.market_growth_score,
+        market_size_score=row.market_size_score,
+        profitability_score=row.profitability_score,
+        competitive_intensity_score=row.competitive_intensity_score,
+        attractiveness=row.overall_attractiveness_score,
+        strength=row.competitive_strength_score,
+        settings=settings,
+    )
+    return {
+        "company_id": str(company.id),
+        "market_attractiveness_id": str(row.id),
+        "baseline_quadrant": result.baseline_quadrant.value,
+        "baseline_attractiveness": result.baseline_attractiveness,
+        "baseline_strength": result.baseline_strength,
+        "verdict": result.verdict.value,
+        "axes": [a.to_dict() for a in result.axes],
+        "strength_sensitivity": (
+            result.strength_sensitivity.to_dict() if result.strength_sensitivity else None
+        ),
+        "binding_constraint": (
+            result.binding_constraint.to_dict() if result.binding_constraint else None
+        ),
+        "calculation_basis": result.calculation_basis,
+    }
+
+
+def run_scenario_for(
+    db: Session,
+    company: Company,
+    *,
+    name: str,
+    description: str | None,
+    overrides: dict,
+    settings: Settings,
+) -> Scenario:
+    from app.services import scenario_engine
+
+    baseline_row = company.attractiveness_results[-1]
+    baseline_snapshot = {
+        "market_growth_score": baseline_row.market_growth_score,
+        "market_size_score": baseline_row.market_size_score,
+        "profitability_score": baseline_row.profitability_score,
+        "competitive_intensity_score": baseline_row.competitive_intensity_score,
+        "overall_attractiveness_score": baseline_row.overall_attractiveness_score,
+        "competitive_strength_score": baseline_row.competitive_strength_score,
+        "quadrant": baseline_row.quadrant,
+        "borderline": baseline_row.borderline,
+    }
+
+    result = scenario_engine.run_scenario(
+        baseline_financial_data=company.financial_data or {},
+        baseline_market_data=company.market_data or {},
+        baseline_qualitative_inputs=company.qualitative_inputs or [],
+        baseline_competitors=[competitor_payload(c) for c in company.competitors],
+        baseline_snapshot=baseline_snapshot,
+        industry=company.industry,
+        overrides=overrides,
+        settings=settings,
+    )
+
+    snapshot = scenario_engine.result_snapshot(result.attractiveness)
+    row = Scenario(
+        company_id=company.id,
+        name=name,
+        description=description,
+        overrides=result.applied_overrides,
+        baseline_snapshot=baseline_snapshot,
+        scenario_result={
+            **snapshot,
+            "resulting_inputs": result.resulting_inputs,
+            "warnings": result.warnings,
+            "calculation_basis": result.attractiveness.calculation_basis,
+            "narrative": scenario_engine.describe_move(
+                baseline_snapshot["quadrant"], snapshot["quadrant"]
+            ),
+        },
+        delta=result.delta,
+        quadrant_changed=result.quadrant_changed,
+    )
+    db.add(row)
+    db.commit()
+    db.refresh(row)
+    return row
+
+
+def build_entity_timeline(db: Session, entity_key: str, settings: Settings) -> dict:
+    from app.services.timeline import build_timeline
+
+    companies = list(
+        db.scalars(select(Company).where(Company.entity_key == entity_key))
+    )
+    rows: list[dict] = []
+    for company in companies:
+        latest = company.attractiveness_results[-1] if company.attractiveness_results else None
+        rows.append(
+            {
+                "company_id": str(company.id),
+                "period_label": company.period_label,
+                "period_end": company.period_end,
+                "attractiveness": latest.overall_attractiveness_score if latest else None,
+                "strength": latest.competitive_strength_score if latest else None,
+                "quadrant": latest.quadrant if latest else None,
+                "borderline": latest.borderline if latest else False,
+                "data_source": company.data_source,
+            }
+        )
+
+    result = build_timeline(entity_key=entity_key, rows=rows, settings=settings)
+    return {
+        "entity_key": result.entity_key,
+        "points": [p.to_dict() for p in result.points],
+        "excluded": result.excluded,
+        "attractiveness_trend": result.attractiveness_trend.value,
+        "strength_trend": result.strength_trend.value,
+        "quadrant_changes": result.quadrant_changes,
+        "summary": result.summary,
+        "calculation_basis": result.calculation_basis,
+    }

@@ -25,6 +25,9 @@ def create_company(payload: CompanyCreate, db: DbSession):
         feature_scores=payload.feature_scores,
         qualitative_inputs=[factor.model_dump() for factor in payload.qualitative_inputs],
         data_source=payload.data_source,
+        entity_key=payload.entity_key,
+        period_label=payload.period_label,
+        period_end=payload.period_end,
     )
     db.add(company)
     db.commit()
