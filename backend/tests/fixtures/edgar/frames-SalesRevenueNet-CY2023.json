@@ -1,0 +1,10 @@
+{
+ "taxonomy": "us-gaap",
+ "tag": "SalesRevenueNet",
+ "ccp": "CY2023I",
+ "uom": "USD",
+ "label": "SalesRevenueNet",
+ "description": "Fixture frame for SalesRevenueNet",
+ "pts": 0,
+ "data": []
+}

@@ -1,0 +1,23 @@
+{
+ "cik": "1051",
+ "entityType": "operating",
+ "sic": "",
+ "sicDescription": "",
+ "name": "FIXTURE COMPANY 1051",
+ "tickers": [
+  "FIX1051"
+ ],
+ "exchanges": [
+  "Nasdaq"
+ ],
+ "filings": {
+  "recent": {
+   "form": [
+    "10-K"
+   ],
+   "accessionNumber": [
+    "00001051-24-000001"
+   ]
+  }
+ }
+}

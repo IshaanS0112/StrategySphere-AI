@@ -42,11 +42,24 @@ class MarginBasis(str, Enum):
 
 
 class BenchmarkBasis(str, Enum):
-    """Where a SWOT metric's comparison point came from."""
+    """Where a SWOT metric's comparison point came from.
+
+    The three V3 members exist because "industry table" stopped being one
+    thing. A placeholder round number and the median of 148 real filers are
+    both "the industry table" and a reader has to be able to tell them apart
+    without opening the file.
+    """
 
     PEER_SET = "PEER_SET"           # median of the competitors supplied
     INDUSTRY_TABLE = "INDUSTRY_TABLE"   # configured industry reference band
     UNAVAILABLE = "UNAVAILABLE"     # metric skipped, no benchmark to compare to
+
+    # --- V3 -----------------------------------------------------------------
+    # Median of the SIC-classified filers in this sector, from SEC XBRL data.
+    EDGAR_SECTOR_MEDIAN = "EDGAR_SECTOR_MEDIAN"
+    # Median across every filer that resolved the metric, used when a sector
+    # has fewer than edgar_min_sector_n companies or no SIC classification.
+    EDGAR_ALL_FILER_MEDIAN = "EDGAR_ALL_FILER_MEDIAN"
 
 
 class NarrativeSource(str, Enum):
@@ -104,3 +117,39 @@ class SensitivityVerdict(str, Enum):
     ROBUST = "ROBUST"                    # no single input flips it within its plausible range
     FRAGILE = "FRAGILE"                  # at least one input flips it with a modest change
     KNIFE_EDGE = "KNIFE_EDGE"            # already borderline, or flips on a trivial change
+
+
+# --------------------------------------------------------------------------
+# V3
+# --------------------------------------------------------------------------
+
+
+class VerdictStability(str, Enum):
+    """How much of the sampled uncertainty the point verdict survives.
+
+    Banded from the Shannon entropy of the quadrant probabilities, in bits.
+    Zero means every draw agreed; log2(3) = 1.585 means a three-way coin flip.
+    """
+
+    DECISIVE = "DECISIVE"        # the draws overwhelmingly agree
+    LEANING = "LEANING"          # a clear modal quadrant with real runner-up mass
+    CONTESTED = "CONTESTED"      # the verdict is a coin flip; do not quote it alone
+
+
+class AllocationOutcome(str, Enum):
+    """What the budget-constrained allocator did with one business unit."""
+
+    FUNDED = "FUNDED"                # received its full capital_requested
+    PARTIALLY_FUNDED = "PARTIALLY_FUNDED"   # floor plus some, but short of the request
+    FLOOR_ONLY = "FLOOR_ONLY"        # kept operating, received nothing discretionary
+    UNFUNDED = "UNFUNDED"            # no floor and nothing discretionary
+    CONTRIBUTOR = "CONTRIBUTOR"      # HARVEST_DIVEST: funds the pool rather than drawing
+
+
+class MetricDerivation(str, Enum):
+    """How a benchmark metric is obtained from XBRL facts."""
+
+    DIRECT = "DIRECT"            # one concept, taken as reported
+    RATIO = "RATIO"              # numerator / denominator x 100, same period and unit
+    GROWTH = "GROWTH"            # (value_T / value_T-1 - 1) x 100
+    NOT_DERIVABLE = "NOT_DERIVABLE"   # no honest XBRL proxy exists; declared, not faked

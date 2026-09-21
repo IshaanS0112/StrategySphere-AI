@@ -129,6 +129,59 @@ class Settings(BaseSettings):
     validation_permutations: int = 2000
     validation_random_seed: int = 20260908
 
+    # --- V3: SEC EDGAR benchmark sourcing ----------------------------------
+    # The SEC's developer guidance requires automated access to declare a
+    # User-Agent identifying the requester with contact details. There is
+    # deliberately NO usable default here: the empty string means "not
+    # configured", the app still starts (the no-API-key promise extends to the
+    # no-EDGAR-credentials case), and EdgarClient raises on construction rather
+    # than letting an anonymous request reach SEC infrastructure.
+    edgar_user_agent: str = ""
+    # Published guidance caps automated access at 10 requests/second. Five is
+    # deliberately half of that; the invariant check below refuses anything
+    # above the published ceiling, because a rate limiter you can misconfigure
+    # past the limit is not a rate limiter.
+    edgar_requests_per_second: float = 5.0
+    edgar_timeout_seconds: float = 30.0
+    # Every response is cached to disk keyed by URL. Historical period data does
+    # not change, so a rebuild must not re-hit the API.
+    edgar_cache_dir: str = "data/edgar_cache"
+    # Serve from cache only. A miss is a loud failure, never a silent fetch.
+    edgar_offline: bool = False
+    # A sector median is only published at or above this many resolved
+    # companies. Below it the sector is omitted and the lookup falls back to
+    # the all-filer median, which the output states explicitly. A median of
+    # four companies is not an industry benchmark.
+    edgar_min_sector_n: int = 20
+    # SIC codes come from the per-company submissions endpoint, which is one
+    # request per company. The all-filer median uses every filer that resolved
+    # a metric (no SIC needed); sector medians can only cover the companies we
+    # actually classified. This caps that classification pass.
+    edgar_sic_lookup_limit: int = 600
+
+    # --- V3: Uncertainty propagation ---------------------------------------
+    uncertainty_draws: int = 10000
+    uncertainty_seed: int = 20260921
+    # PERT weights the mode more heavily than a triangular distribution and,
+    # unlike uniform, does not throw the mode away. Both alternatives remain
+    # selectable, and the choice is recorded in calculation_basis.
+    uncertainty_distribution: str = "PERT"     # PERT | TRIANGULAR | UNIFORM
+    uncertainty_pert_lambda: float = 4.0
+    uncertainty_credible_interval_pct: float = 90.0
+    # Shannon entropy over the three quadrant probabilities, in bits. The
+    # maximum for three outcomes is log2(3) = 1.585.
+    uncertainty_decisive_below: float = 0.25
+    uncertainty_contested_at_or_above: float = 0.85
+
+    # --- V3: Portfolio capital allocation ----------------------------------
+    # PROJECT-DEFINED ALLOCATION RULE. GE-McKinsey positions business units; it
+    # prescribes no allocation arithmetic at all. Everything in this block is
+    # mine and is labelled as mine in every payload that uses it.
+    harvest_contribution_rate: float = 0.10
+    # priority_score = attractiveness * strength * (1 - entropy_bits / this).
+    # log2(3): the entropy of a three-way coin flip, i.e. total indecision.
+    max_entropy_bits: float = 1.584962500721156
+
     @property
     def cors_origin_list(self) -> list[str]:
         return [o.strip() for o in self.cors_origins.split(",") if o.strip()]
@@ -175,6 +228,45 @@ class Settings(BaseSettings):
 
         if not 0.0 < self.porter_min_input_coverage <= 1.0:
             raise ValueError("porter_min_input_coverage must be in (0, 1]")
+
+        # SEC published guidance is 10 requests/second for automated access.
+        # Refusing to start above it is the only way the limit is a limit
+        # rather than a suggestion in a comment.
+        if not 0.0 < self.edgar_requests_per_second <= 10.0:
+            raise ValueError(
+                f"edgar_requests_per_second must be in (0, 10]; got "
+                f"{self.edgar_requests_per_second}. The SEC publishes 10 req/s as the "
+                "ceiling for automated access to data.sec.gov."
+            )
+
+        if self.edgar_min_sector_n < 2:
+            raise ValueError(
+                "edgar_min_sector_n must be at least 2; a 'median' of one company is "
+                "that company's number wearing a benchmark's clothes."
+            )
+
+        if self.uncertainty_distribution not in {"PERT", "TRIANGULAR", "UNIFORM"}:
+            raise ValueError(
+                "uncertainty_distribution must be PERT, TRIANGULAR or UNIFORM"
+            )
+
+        if self.uncertainty_draws < 100:
+            raise ValueError(
+                f"uncertainty_draws = {self.uncertainty_draws} is too few to estimate a "
+                "probability worth quoting. Use at least 100."
+            )
+
+        if not 50.0 <= self.uncertainty_credible_interval_pct < 100.0:
+            raise ValueError("uncertainty_credible_interval_pct must be in [50, 100)")
+
+        if self.uncertainty_decisive_below >= self.uncertainty_contested_at_or_above:
+            raise ValueError(
+                "uncertainty_decisive_below must sit under "
+                "uncertainty_contested_at_or_above"
+            )
+
+        if not 0.0 <= self.harvest_contribution_rate <= 1.0:
+            raise ValueError("harvest_contribution_rate must be a fraction in [0, 1]")
 
         return self
 

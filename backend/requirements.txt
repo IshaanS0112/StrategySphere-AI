@@ -6,4 +6,10 @@ psycopg2-binary==2.9.10
 pydantic==2.10.4
 pydantic-settings==2.7.0
 anthropic==0.42.0
+# Pinned deliberately. starlette 0.41.3 imports anyio.abc.BlockingPortal, which
+# anyio deprecated in 4.10; with pytest.ini's `filterwarnings = error` that
+# turns every TestClient fixture into a collection error on a fresh install.
+# An unpinned transitive dependency is a CI failure waiting for a release it
+# does not control. See docs/architecture.md, bugs found in V3.
+anyio==4.9.0
 python-dotenv==1.0.1

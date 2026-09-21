@@ -141,7 +141,7 @@ def _score_financial_metrics(
     financial_data: dict,
     peer_financials: list[dict],
     industry: str | None,
-    benchmark_table: dict[str, dict[str, float]],
+    benchmark_table: bench.BenchmarkTable,
     settings: Settings,
 ) -> tuple[list[SwotFactor], list[dict[str, Any]]]:
     factors: list[SwotFactor] = []
@@ -153,13 +153,21 @@ def _score_financial_metrics(
             trace.append({"metric": rule.key, "status": "skipped", "reason": "not reported"})
             continue
 
+        # V3: the table lookup returns a point carrying its own basis and the
+        # sample size behind it, so an EDGAR sector median can say n=148 in the
+        # evidence string while a placeholder band still says "industry
+        # benchmark". The peer-set path is untouched.
         benchmark = bench.peer_median(
             peer_financials, rule.key, settings.swot_min_peers_for_benchmark
         )
-        basis = BenchmarkBasis.PEER_SET
+        basis = BenchmarkBasis.PEER_SET.value
+        basis_label = "peer-set median"
+        benchmark_n: int | None = None
         if benchmark is None:
-            benchmark = bench.industry_benchmark(benchmark_table, industry, rule.key)
-            basis = BenchmarkBasis.INDUSTRY_TABLE
+            point = benchmark_table.lookup(industry, rule.key)
+            if point is not None:
+                benchmark, basis, basis_label = point.value, point.basis, point.label()
+                benchmark_n = point.n
         if benchmark is None:
             trace.append(
                 {"metric": rule.key, "status": "skipped", "reason": "no benchmark available"}
@@ -175,7 +183,8 @@ def _score_financial_metrics(
             "metric": rule.key,
             "value": value,
             "benchmark": benchmark,
-            "benchmark_basis": basis.value,
+            "benchmark_basis": basis,
+            "benchmark_n": benchmark_n,
             "favourable_deviation_pct": round(deviation, 3),
             "higher_is_better": rule.higher_is_better,
         }
@@ -190,7 +199,6 @@ def _score_financial_metrics(
 
         impact = impact_from_deviation(abs(deviation), settings)
         category = SwotCategory.STRENGTH if deviation > 0 else SwotCategory.WEAKNESS
-        basis_label = "peer-set median" if basis is BenchmarkBasis.PEER_SET else "industry benchmark"
         direction = "above" if deviation > 0 else "below"
 
         evidence = (
@@ -211,7 +219,7 @@ def _score_financial_metrics(
                 impact_score=impact,
                 source="computed_financial",
                 metric=rule.key,
-                benchmark_basis=basis.value,
+                benchmark_basis=basis,
             )
         )
 
@@ -405,7 +413,7 @@ def run_swot_analysis(
     settings: Settings,
 ) -> SwotResult:
     """Score a full SWOT grid. Deterministic: same inputs, same output, no LLM."""
-    benchmark_table, provenance = bench.load_industry_benchmarks(settings.industry_benchmarks_path)
+    benchmark_table = bench.load_benchmark_table(settings.industry_benchmarks_path)
     peer_financials = [
         c.get("financial_data") or {} for c in competitors if isinstance(c, dict)
     ]
@@ -434,7 +442,7 @@ def run_swot_analysis(
     peers_with_financials = sum(1 for f in peer_financials if f)
 
     result.calculation_basis = {
-        "benchmark_provenance": provenance,
+        "benchmark_provenance": benchmark_table.provenance,
         "peer_count": len(competitors),
         "peers_reporting_financials": peers_with_financials,
         "min_peers_for_peer_benchmark": settings.swot_min_peers_for_benchmark,

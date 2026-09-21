@@ -145,3 +145,80 @@ def client():
     with TestClient(app) as test_client:
         yield test_client
     Base.metadata.drop_all(bind=engine)
+
+
+# --------------------------------------------------------------------------
+# V3: EDGAR fixtures
+#
+# Every EDGAR test runs against recorded-shape JSON on disk through the real
+# EdgarClient. Nothing in the suite opens a socket: the transport is injected,
+# and the one test that checks the default transport asserts it is *not* called.
+# --------------------------------------------------------------------------
+
+FIXTURE_DIR = Path(__file__).resolve().parent / "fixtures" / "edgar"
+
+
+def fixture_name_for(url: str) -> str:
+    """Map a data.sec.gov URL onto a fixture filename."""
+    trimmed = url.removesuffix(".json")
+    if "/frames/" in url:
+        # .../frames/us-gaap/{concept}/{unit}/{period}.json
+        parts = trimmed.split("/")
+        concept, _unit, period = parts[-3], parts[-2], parts[-1]
+        return f"frames-{concept}-{period}"
+    if "/submissions/" in url:
+        return f"submissions-{trimmed.split('/')[-1]}"
+    raise AssertionError(f"no fixture mapping for {url}")
+
+
+class RecordedTransport:
+    """Serves fixture files and records every URL it was asked for."""
+
+    def __init__(self, missing_ok: bool = False) -> None:
+        self.calls: list[str] = []
+        self.missing_ok = missing_ok
+
+    def __call__(self, url: str, headers: dict, timeout: float) -> bytes:
+        self.calls.append(url)
+        self.headers = headers
+        name = fixture_name_for(url)
+        path = FIXTURE_DIR / f"{name}.json"
+        if not path.is_file():
+            if self.missing_ok:
+                import urllib.error
+
+                raise urllib.error.HTTPError(url, 404, "Not Found", {}, None)
+            raise AssertionError(f"fixture {path} missing")
+        return path.read_bytes()
+
+
+@pytest.fixture
+def recorded_transport() -> "RecordedTransport":
+    # missing_ok: a concept with no frame for a period 404s in real life too,
+    # and the candidate resolver has to survive it.
+    return RecordedTransport(missing_ok=True)
+
+
+@pytest.fixture
+def edgar_client(tmp_path, recorded_transport):
+    """A real EdgarClient wired to fixtures, a temp cache, and a fake clock."""
+    from app.services.edgar.client import EdgarClient
+
+    now = [0.0]
+
+    def clock() -> float:
+        return now[0]
+
+    def sleep(seconds: float) -> None:
+        now[0] += seconds
+
+    client = EdgarClient(
+        user_agent="StrategySphere Tests tests@example.com",
+        cache_dir=tmp_path / "edgar-cache",
+        requests_per_second=1000.0,   # the limiter has its own tests
+        transport=recorded_transport,
+        clock=clock,
+        sleep=sleep,
+    )
+    client.test_clock = now      # type: ignore[attr-defined]
+    return client

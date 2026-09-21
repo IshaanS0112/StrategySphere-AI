@@ -1,0 +1,23 @@
+{
+ "cik": "1023",
+ "entityType": "operating",
+ "sic": "5331",
+ "sicDescription": "Fixture industry",
+ "name": "FIXTURE COMPANY 1023",
+ "tickers": [
+  "FIX1023"
+ ],
+ "exchanges": [
+  "Nasdaq"
+ ],
+ "filings": {
+  "recent": {
+   "form": [
+    "10-K"
+   ],
+   "accessionNumber": [
+    "00001023-24-000001"
+   ]
+  }
+ }
+}

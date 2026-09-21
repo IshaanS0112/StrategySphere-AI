@@ -1,0 +1,375 @@
+"""Frames + SIC -> sector medians + the provenance block that makes them readable.
+
+This is the module that closes the loudest caveat in the repository. V1 and V2
+shipped an industry benchmark table of placeholder round numbers, and said so
+in three places. Every SWOT factor scored against that table was therefore
+scored against a number I invented. This builds the table from SEC XBRL filings
+instead.
+
+**What it emits** is exactly the JSON shape ``INDUSTRY_BENCHMARKS_PATH`` already
+consumes — a mapping of sector to ``{metric: value}`` — plus a ``_provenance``
+block and per-row ``_meta``. The SWOT engine reads a table from a path and
+records a basis, which it already did; nothing in it learns about HTTP.
+
+**Three rules keep the output honest.**
+
+1. *Drop and count, never impute.* A company where no candidate tag resolves is
+   excluded and the reason recorded. Coverage is published as a number.
+2. *A ratio's legs share a period and a unit.* Guaranteed structurally: both
+   legs come from the same ``(unit, period)`` frame request. A FY2023
+   numerator over a FY2022 denominator produces a number that looks fine and is
+   wrong.
+3. *A sector median is published only at n >= min_sector_n.* Below that the
+   sector is omitted entirely and lookups fall through to the all-filer median,
+   which the output states. A median of four companies is not an industry
+   benchmark.
+
+**The SIC sample, stated plainly.** Sector classification needs the submissions
+endpoint, which is one request per company — thousands of requests for a full
+universe. So the all-filer median uses *every* filer that resolved a metric
+(free: it needs no SIC), while sector medians cover a bounded sample: the
+``sic_lookup_limit`` largest filers by revenue that resolved at least one
+metric. That biases every sector median toward large-cap filers. It is a real
+limitation, it is in the provenance block, and it is the price of a build that
+finishes inside the published rate limit.
+"""
+
+from __future__ import annotations
+
+import logging
+from dataclasses import dataclass, field
+from datetime import datetime, timezone
+from statistics import median
+from typing import Any, Callable
+
+from app.enums import BenchmarkBasis, MetricDerivation
+from app.services.edgar import concepts as concept_mod
+from app.services.edgar import sic as sic_mod
+from app.services.edgar.client import EdgarClient, EdgarFetchError, EdgarOfflineError
+from app.services.edgar.frames import ResolvedConcept, resolve_candidates
+
+logger = logging.getLogger(__name__)
+
+SOURCE_STATEMENT = "SEC EDGAR XBRL frames API, data.sec.gov"
+
+
+@dataclass
+class MetricCoverage:
+    """Resolution outcome for one metric across the whole filer universe."""
+
+    key: str
+    resolved: int = 0
+    dropped: int = 0
+    drop_reasons: dict[str, int] = field(default_factory=dict)
+    tag_resolution: dict[str, int] = field(default_factory=dict)
+
+    def drop(self, reason: str) -> None:
+        self.dropped += 1
+        self.drop_reasons[reason] = self.drop_reasons.get(reason, 0) + 1
+
+    @property
+    def considered(self) -> int:
+        return self.resolved + self.dropped
+
+    @property
+    def coverage_pct(self) -> float:
+        return round(100.0 * self.resolved / self.considered, 2) if self.considered else 0.0
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "resolved": self.resolved,
+            "dropped": self.dropped,
+            "coverage_pct": self.coverage_pct,
+            "drop_reasons": dict(sorted(self.drop_reasons.items(), key=lambda kv: -kv[1])),
+        }
+
+
+@dataclass
+class BuildResult:
+    table: dict[str, Any]
+    provenance: dict[str, Any]
+
+    def payload(self) -> dict[str, Any]:
+        """The file as written: sectors plus the provenance block."""
+        return {"_provenance": self.provenance, **self.table}
+
+
+class _ConceptCache:
+    """One frames request per candidate tag per period, never two.
+
+    Revenue is the denominator of four ratios and the numerator of growth. Left
+    unmemoised this class of builder makes the same three revenue frame
+    requests five times, which is both slow and rude to a public API.
+    """
+
+    def __init__(self, client: EdgarClient) -> None:
+        self._client = client
+        self._store: dict[tuple[tuple[str, ...], str, str], ResolvedConcept] = {}
+
+    def get(self, candidates: tuple[str, ...], *, unit: str, period: str) -> ResolvedConcept:
+        key = (candidates, unit, period)
+        if key not in self._store:
+            self._store[key] = resolve_candidates(
+                self._client, candidates, unit=unit, period=period
+            )
+        return self._store[key]
+
+    @property
+    def frames_fetched(self) -> int:
+        return sum(len(resolved.frames) for resolved in self._store.values())
+
+
+def _company_values_for_metric(
+    spec: concept_mod.MetricSpec,
+    cache: _ConceptCache,
+    *,
+    period: str,
+    prior_period: str,
+) -> tuple[dict[int, float], MetricCoverage, dict[int, str]]:
+    """Per-company value for one metric, with coverage and the resolved tag."""
+    coverage = MetricCoverage(key=spec.key)
+    values: dict[int, float] = {}
+    tags: dict[int, str] = {}
+
+    if spec.derivation is MetricDerivation.GROWTH:
+        current = cache.get(spec.numerator, unit="USD", period=period)
+        prior = cache.get(spec.numerator, unit="USD", period=prior_period)
+        universe = set(current.values) | set(prior.values)
+        for cik in universe:
+            now = current.values.get(cik)
+            before = prior.values.get(cik)
+            if now is None:
+                coverage.drop(f"no revenue tag resolved for {period}")
+                continue
+            if before is None:
+                coverage.drop(f"no revenue tag resolved for {prior_period}")
+                continue
+            if current.tag_by_cik.get(cik) != prior.tag_by_cik.get(cik):
+                # Post-606 tag in one year and the legacy tag in the other are
+                # two different definitions of revenue. A growth rate across
+                # them measures the taxonomy change, not the business.
+                coverage.drop("revenue tag differs between the two periods")
+                continue
+            if before <= 0:
+                coverage.drop("non-positive prior-period revenue")
+                continue
+            growth = (now / before - 1.0) * 100.0
+            low, high = spec.plausible_range
+            if not low <= growth <= high:
+                coverage.drop("outside plausible range")
+                continue
+            values[cik] = growth
+            tags[cik] = current.tag_by_cik[cik]
+            coverage.resolved += 1
+            tag = current.tag_by_cik[cik]
+            coverage.tag_resolution[tag] = coverage.tag_resolution.get(tag, 0) + 1
+        return values, coverage, tags
+
+    # RATIO
+    numerator = cache.get(spec.numerator, unit="USD", period=period)
+    denominator = cache.get(spec.denominator, unit="USD", period=period)
+    universe = set(numerator.values) | set(denominator.values)
+    for cik in universe:
+        top = numerator.values.get(cik)
+        bottom = denominator.values.get(cik)
+        if top is None:
+            coverage.drop(f"no {spec.numerator[0]} candidate resolved")
+            continue
+        if bottom is None:
+            coverage.drop(f"no {spec.denominator[0]} candidate resolved")
+            continue
+        if bottom <= 0:
+            # Negative book equity or negative revenue produces a ratio whose
+            # sign reads as the opposite of what it means.
+            coverage.drop("non-positive denominator")
+            continue
+        value = (top / bottom) * spec.scale
+        low, high = spec.plausible_range
+        if not low <= value <= high:
+            coverage.drop("outside plausible range")
+            continue
+        values[cik] = value
+        tag = f"{numerator.tag_by_cik[cik]}/{denominator.tag_by_cik[cik]}"
+        tags[cik] = tag
+        coverage.resolved += 1
+        coverage.tag_resolution[tag] = coverage.tag_resolution.get(tag, 0) + 1
+
+    return values, coverage, tags
+
+
+def _classify_sample(
+    client: EdgarClient,
+    ciks: list[int],
+    *,
+    progress: Callable[[str], None] | None = None,
+) -> tuple[dict[int, str], dict[str, Any]]:
+    """One submissions request per company, to get a SIC code and a sector."""
+    sectors: dict[int, str] = {}
+    lookups = 0
+    failures = 0
+    unclassified = 0
+    for index, cik in enumerate(ciks, start=1):
+        try:
+            payload = client.submissions(cik)
+        except (EdgarFetchError, EdgarOfflineError) as exc:
+            failures += 1
+            logger.debug("submissions CIK%010d failed: %s", cik, exc)
+            continue
+        lookups += 1
+        raw_sic, _ = sic_mod.sic_from_submissions(payload)
+        sector = sic_mod.sector_for_sic(raw_sic)
+        if sector == sic_mod.UNCLASSIFIED:
+            unclassified += 1
+        sectors[cik] = sector
+        if progress and index % 50 == 0:
+            progress(f"  classified {index}/{len(ciks)} companies")
+    return sectors, {
+        "companies_requested": len(ciks),
+        "lookups_succeeded": lookups,
+        "lookups_failed": failures,
+        "unclassified": unclassified,
+    }
+
+
+def build_benchmark_table(
+    client: EdgarClient,
+    *,
+    period: str = "CY2024",
+    prior_period: str | None = None,
+    min_sector_n: int = 20,
+    sic_lookup_limit: int = 600,
+    specs: tuple[concept_mod.MetricSpec, ...] = concept_mod.METRIC_SPECS,
+    progress: Callable[[str], None] | None = None,
+) -> BuildResult:
+    """Build sector medians for ``period`` and the provenance to read them with."""
+    if prior_period is None:
+        prior_period = f"CY{int(period.removeprefix('CY')) - 1}"
+
+    say = progress or (lambda _msg: None)
+    cache = _ConceptCache(client)
+
+    metric_values: dict[str, dict[int, float]] = {}
+    coverage_by_metric: dict[str, MetricCoverage] = {}
+    tag_resolution: dict[str, dict[str, int]] = {}
+
+    for spec in specs:
+        say(f"resolving {spec.key} ...")
+        values, coverage, _tags = _company_values_for_metric(
+            spec, cache, period=period, prior_period=prior_period
+        )
+        metric_values[spec.key] = values
+        coverage_by_metric[spec.key] = coverage
+        tag_resolution[spec.key] = dict(
+            sorted(coverage.tag_resolution.items(), key=lambda kv: -kv[1])
+        )
+        say(f"  {spec.key}: {coverage.resolved} resolved, {coverage.dropped} dropped")
+
+    universe = sorted({cik for values in metric_values.values() for cik in values})
+
+    # --- the SIC sample ----------------------------------------------------
+    # Ranked by revenue descending so the sample is deterministic and its bias
+    # is a stated one. CIK as the tie-break keeps the order stable across runs.
+    revenue = cache.get(concept_mod.REVENUE_TAGS, unit="USD", period=period).values
+    ranked = sorted(universe, key=lambda cik: (-revenue.get(cik, 0.0), cik))
+    sample = ranked[: max(0, int(sic_lookup_limit))]
+    say(f"classifying {len(sample)} of {len(universe)} companies by SIC ...")
+    sector_by_cik, sic_stats = _classify_sample(client, sample, progress=progress)
+
+    # --- medians -----------------------------------------------------------
+    table: dict[str, Any] = {}
+
+    default_row: dict[str, Any] = {}
+    default_meta: dict[str, Any] = {}
+    for spec in specs:
+        values = list(metric_values[spec.key].values())
+        if not values:
+            continue
+        default_row[spec.key] = round(float(median(values)), 4)
+        default_meta[spec.key] = {
+            "n": len(values),
+            "basis": BenchmarkBasis.EDGAR_ALL_FILER_MEDIAN.value,
+        }
+    default_row["_n"] = len(universe)
+    default_row["_basis"] = BenchmarkBasis.EDGAR_ALL_FILER_MEDIAN.value
+    default_row["_meta"] = default_meta
+    table["_default"] = default_row
+
+    by_sector: dict[str, list[int]] = {}
+    for cik, sector in sector_by_cik.items():
+        if sector == sic_mod.UNCLASSIFIED:
+            continue
+        by_sector.setdefault(sector, []).append(cik)
+
+    sectors_below_min_n: dict[str, int] = {}
+    for sector, members in sorted(by_sector.items()):
+        row: dict[str, Any] = {}
+        meta: dict[str, Any] = {}
+        for spec in specs:
+            values = [
+                metric_values[spec.key][cik]
+                for cik in members
+                if cik in metric_values[spec.key]
+            ]
+            if len(values) < min_sector_n:
+                continue
+            row[spec.key] = round(float(median(values)), 4)
+            meta[spec.key] = {
+                "n": len(values),
+                "basis": BenchmarkBasis.EDGAR_SECTOR_MEDIAN.value,
+            }
+        if not row:
+            # Every metric in this sector fell short of min_sector_n. Publishing
+            # an empty row would be indistinguishable from a sector that simply
+            # has no data, so record why it is absent instead.
+            sectors_below_min_n[sector] = len(members)
+            continue
+        row["_n"] = len(members)
+        row["_basis"] = BenchmarkBasis.EDGAR_SECTOR_MEDIAN.value
+        row["_meta"] = meta
+        table[sector] = row
+
+    built_at = datetime.now(timezone.utc).isoformat(timespec="seconds")
+    provenance = {
+        "source": SOURCE_STATEMENT,
+        "period": period,
+        "prior_period_for_growth": prior_period,
+        "built_at": built_at,
+        "companies_considered": len(universe),
+        "coverage_by_metric": {
+            key: cov.to_dict() for key, cov in coverage_by_metric.items()
+        },
+        "tag_resolution": tag_resolution,
+        "min_sector_n": min_sector_n,
+        "sectors_published": sorted(k for k in table if k != "_default"),
+        "sectors_below_min_n": sectors_below_min_n,
+        "sic_sample": {
+            "rule": (
+                "the largest filers by reported revenue that resolved at least one "
+                "metric, capped at sic_lookup_limit"
+            ),
+            "limit": sic_lookup_limit,
+            "bias": (
+                "Sector medians therefore describe LARGE filers in that sector, not "
+                "all of them. The all-filer median in _default uses the entire "
+                "resolved universe, because it needs no SIC lookup. This is the "
+                "trade the published rate limit forces: SIC classification is one "
+                "request per company."
+            ),
+            **sic_stats,
+        },
+        "metrics_not_derivable": concept_mod.NOT_DERIVABLE,
+        "derivation_notes": {
+            spec.key: spec.note for spec in specs if spec.note
+        },
+        "method": (
+            "One frames request per candidate tag per period. Ratios take both legs "
+            "from the same unit and period, so a numerator can never be divided by "
+            "a denominator from a different year. Companies where no candidate tag "
+            "resolves are dropped and counted, never imputed. Medians, not means: "
+            "one filer with a unit error should not move a benchmark."
+        ),
+        "frames_requests": cache.frames_fetched,
+        "fetch_stats": client.stats.to_dict(),
+    }
+
+    return BuildResult(table=table, provenance=provenance)
