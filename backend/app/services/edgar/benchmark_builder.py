@@ -94,7 +94,7 @@ class BuildResult:
         return {"_provenance": self.provenance, **self.table}
 
 
-class _ConceptCache:
+class ConceptCache:
     """One frames request per candidate tag per period, never two.
 
     Revenue is the denominator of four ratios and the numerator of growth. Left
@@ -141,9 +141,9 @@ def instant_period(period: str) -> str:
     )
 
 
-def _company_values_for_metric(
+def company_values_for_metric(
     spec: concept_mod.MetricSpec,
-    cache: _ConceptCache,
+    cache: ConceptCache,
     *,
     period: str,
     prior_period: str,
@@ -273,7 +273,7 @@ def build_benchmark_table(
         prior_period = f"CY{int(period.removeprefix('CY')) - 1}"
 
     say = progress or (lambda _msg: None)
-    cache = _ConceptCache(client)
+    cache = ConceptCache(client)
 
     metric_values: dict[str, dict[int, float]] = {}
     coverage_by_metric: dict[str, MetricCoverage] = {}
@@ -281,7 +281,7 @@ def build_benchmark_table(
 
     for spec in specs:
         say(f"resolving {spec.key} ...")
-        values, coverage, _tags = _company_values_for_metric(
+        values, coverage, _tags = company_values_for_metric(
             spec, cache, period=period, prior_period=prior_period
         )
         metric_values[spec.key] = values

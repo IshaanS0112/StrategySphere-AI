@@ -238,3 +238,99 @@ class TestPanelParsing:
         )
         assert rows[0].quadrant == "INVEST_GROW"
         assert rows[0].label == "Acme"
+
+
+# --------------------------------------------------------------------------
+# V3: the baseline comparison
+# --------------------------------------------------------------------------
+
+
+class TestSpearmanPermutation:
+    def test_a_perfect_association_is_significant(self, settings):
+        from app.services.validation import spearman_permutation_p
+
+        xs = list(range(40))
+        ys = [float(x) * 2.0 for x in xs]
+        assert spearman_permutation_p(xs, ys, settings) <= 0.01
+
+    def test_pure_noise_is_not(self, settings):
+        import random
+
+        from app.services.validation import spearman_permutation_p
+
+        rng = random.Random(11)
+        xs = [rng.random() for _ in range(60)]
+        ys = [rng.random() for _ in range(60)]
+        assert spearman_permutation_p(xs, ys, settings) > 0.05
+
+    def test_it_is_two_sided(self, settings):
+        # A strongly REVERSED association is also a rejection of "no
+        # information". A one-sided test would hide a framework predicting the
+        # opposite of what it claims.
+        from app.services.validation import spearman_permutation_p
+
+        xs = list(range(40))
+        assert spearman_permutation_p(xs, [-float(x) for x in xs], settings) <= 0.01
+
+    def test_a_constant_side_has_no_p_value(self, settings):
+        from app.services.validation import spearman_permutation_p
+
+        assert spearman_permutation_p([1.0] * 10, list(range(10)), settings) is None
+
+    def test_it_is_deterministic(self, settings):
+        from app.services.validation import spearman_permutation_p
+
+        xs = [float(i % 7) for i in range(50)]
+        ys = [float((i * 3) % 11) for i in range(50)]
+        assert spearman_permutation_p(xs, ys, settings) == spearman_permutation_p(
+            xs, ys, settings
+        )
+
+    def test_shuffling_ranks_matches_shuffling_values(self, settings):
+        # The optimisation is only valid because rank is invariant under
+        # permutation. Pinned against the slow, obviously-correct version.
+        import random
+
+        from app.services.validation import spearman, spearman_permutation_p
+
+        xs = [float(i) for i in range(30)]
+        ys = [float((i * 7) % 30) for i in range(30)]
+        fast = spearman_permutation_p(xs, ys, settings)
+
+        rng = random.Random(settings.validation_random_seed)
+        observed = abs(spearman(xs, ys))
+        pool = ys[:]
+        hits = 0
+        for _ in range(settings.validation_permutations):
+            rng.shuffle(pool)
+            if abs(spearman(xs, pool)) >= observed - 1e-12:
+                hits += 1
+        slow = round((hits + 1) / (settings.validation_permutations + 1), 4)
+        assert fast == pytest.approx(slow, abs=0.02)
+
+
+class TestGroupSeparation:
+    def test_it_generalises_beyond_the_two_extreme_quadrants(self, settings):
+        from app.services.validation import group_separation
+
+        labels = ["SELECTIVE_INVEST", "SELECTIVE_INVEST", "HARVEST_DIVEST", "HARVEST_DIVEST"]
+        outcomes = [0.2, 0.3, 0.0, 0.1]
+        assert group_separation(
+            labels, outcomes, "SELECTIVE_INVEST", "HARVEST_DIVEST"
+        ) == pytest.approx(0.2)
+
+    def test_a_missing_group_returns_none_rather_than_zero(self, settings):
+        from app.services.validation import group_separation
+
+        labels = ["SELECTIVE_INVEST", "SELECTIVE_INVEST"]
+        assert group_separation(labels, [0.1, 0.2], "INVEST_GROW", "SELECTIVE_INVEST") is None
+
+    def test_the_permutation_p_value_is_deterministic(self, settings):
+        from app.services.validation import separation_permutation_p
+
+        labels = ["A"] * 15 + ["B"] * 15
+        outcomes = [0.3] * 15 + [0.1] * 15
+        first = separation_permutation_p(labels, outcomes, "A", "B", settings)
+        second = separation_permutation_p(labels, outcomes, "A", "B", settings)
+        assert first == second
+        assert first <= 0.01

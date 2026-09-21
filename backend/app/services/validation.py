@@ -225,6 +225,100 @@ def _verdict(result: ValidationResult) -> str:
     )
 
 
+# --------------------------------------------------------------------------
+# V3: the comparison that makes a positive result mean anything
+#
+# V2's README already said it: "even a significant result would be association,
+# not causation, until it beats a baseline model using revenue growth alone."
+# Running the framework against a baseline needs a permutation p-value for a
+# rank correlation, not just for the quadrant separation, because a panel can
+# fail to contain both extreme quadrants while its continuous position score
+# still predicts perfectly well. Both additions below are additive: nothing in
+# the V2 harness changed.
+# --------------------------------------------------------------------------
+
+
+def spearman_permutation_p(
+    xs: list[float], ys: list[float], settings: Settings
+) -> float | None:
+    """Empirical p-value for Spearman's rho under label shuffling.
+
+    The null is "x carries no information about y". Ranks of both sides are
+    computed once and the *rank vector* is shuffled rather than the raw values,
+    which is exactly equivalent - rank is invariant under the permutation - and
+    turns an O(permutations * n log n) test into O(permutations * n).
+
+    Two-sided: the count is on |rho|, because a strongly REVERSED association
+    is also a rejection of "no information", and a one-sided test here would
+    quietly hide a framework that predicts the opposite of what it claims.
+    """
+    observed = spearman(xs, ys)
+    if observed is None:
+        return None
+
+    rank_x = _rank(xs)
+    rank_y = _rank(ys)
+    mean_x, mean_y = mean(rank_x), mean(rank_y)
+    dev_x = [value - mean_x for value in rank_x]
+    dev_y = [value - mean_y for value in rank_y]
+    norm_x = sum(value * value for value in dev_x) ** 0.5
+    norm_y = sum(value * value for value in dev_y) ** 0.5
+    if norm_x == 0 or norm_y == 0:
+        return None
+
+    rng = random.Random(settings.validation_random_seed)
+    target = abs(observed)
+    at_least_as_extreme = 0
+    shuffled = dev_y[:]
+    for _ in range(settings.validation_permutations):
+        rng.shuffle(shuffled)
+        candidate = sum(a * b for a, b in zip(dev_x, shuffled)) / (norm_x * norm_y)
+        if abs(candidate) >= target - 1e-12:
+            at_least_as_extreme += 1
+    # Add-one smoothing: a finite permutation test cannot establish p = 0.
+    return round(
+        (at_least_as_extreme + 1) / (settings.validation_permutations + 1), 4
+    )
+
+
+def group_separation(
+    labels: list[str], outcomes: list[float], high: str, low: str
+) -> float | None:
+    """``mean(outcome | high) - mean(outcome | low)`` for any two labels.
+
+    Generalises the quadrant separation so a panel that contains only two of
+    the three quadrants can still be tested. It cannot invent the missing
+    group: with either side empty it returns None, which is the honest answer
+    and the one the caller has to report.
+    """
+    top = [o for label, o in zip(labels, outcomes) if label == high]
+    bottom = [o for label, o in zip(labels, outcomes) if label == low]
+    if not top or not bottom:
+        return None
+    return mean(top) - mean(bottom)
+
+
+def separation_permutation_p(
+    labels: list[str], outcomes: list[float], high: str, low: str, settings: Settings
+) -> float | None:
+    """Permutation p-value for ``group_separation`` under outcome shuffling."""
+    observed = group_separation(labels, outcomes, high, low)
+    if observed is None:
+        return None
+    rng = random.Random(settings.validation_random_seed)
+    pool = outcomes[:]
+    target = abs(observed)
+    at_least_as_extreme = 0
+    for _ in range(settings.validation_permutations):
+        rng.shuffle(pool)
+        candidate = group_separation(labels, pool, high, low)
+        if candidate is not None and abs(candidate) >= target - 1e-12:
+            at_least_as_extreme += 1
+    return round(
+        (at_least_as_extreme + 1) / (settings.validation_permutations + 1), 4
+    )
+
+
 def parse_panel(records: list[dict[str, Any]]) -> list[PanelRow]:
     """Build panel rows from CSV/JSON records, rejecting unusable ones loudly."""
     rows: list[PanelRow] = []

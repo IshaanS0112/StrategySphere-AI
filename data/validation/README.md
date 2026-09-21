@@ -7,6 +7,18 @@ data this repository does not ship.
 
 ## What is here
 
+**V3 update: two real panels now ship, and the harness has been run on them.
+The answer is in [`docs/validation_results.md`](../../docs/validation_results.md),
+and it is negative.**
+
+`edgar_panel_CY2020_CY2023.json` — 1,484 US filers scored from their CY2020
+XBRL facts through the real pipeline, with 3-year revenue CAGR to CY2023 as the
+outcome. Built by `backend/scripts/build_edgar_panel.py`.
+
+`edgar_panel_CY2021_CY2024.json` — the same construction one year later, 1,495
+filers. Built because the CY2020 window straddles a structural shock and testing
+that is different from tuning it.
+
 `synthetic_demo_panel.json` — 36 **generated** rows with a deliberate signal
 plus gaussian noise. It exists so the harness can be run end to end and so the
 tests have something to bite on.
