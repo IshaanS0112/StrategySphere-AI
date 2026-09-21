@@ -68,6 +68,30 @@ class PeriodFields(BaseModel):
         return self
 
 
+class ThreePointIn(BaseModel):
+    """A low / mode / high estimate for one uncertain input.
+
+    Validated here as well as in the engine because a mode outside its own
+    range is a typo, and the engine's job is to refuse it rather than to be the
+    only thing standing between a typo and a confident-looking probability.
+    """
+
+    low: float
+    mode: float
+    high: float
+
+    @model_validator(mode="after")
+    def _ordered(self) -> "ThreePointIn":
+        if self.low > self.high:
+            raise ValueError(f"low {self.low} is above high {self.high}")
+        if not self.low <= self.mode <= self.high:
+            raise ValueError(
+                f"mode {self.mode} sits outside [{self.low}, {self.high}]. Clamping it "
+                "would sample a distribution you did not describe."
+            )
+        return self
+
+
 class QualitativeFactorIn(BaseModel):
     factor: str = Field(min_length=1, max_length=200)
     category: Literal["STRENGTH", "WEAKNESS", "OPPORTUNITY", "THREAT"]
@@ -84,6 +108,9 @@ class CompanyCreate(PeriodFields):
     qualitative_inputs: list[QualitativeFactorIn] = Field(default_factory=list)
     # Required, not optional: a case study with no provenance is not a case study.
     data_source: str = Field(min_length=3, max_length=500)
+    # V3. {metric: {low, mode, high}} for the axis inputs the matrix reads.
+    # Absent means no stated uncertainty, which is the V1/V2 behaviour exactly.
+    uncertainty_inputs: dict[str, ThreePointIn] | None = None
 
     @field_validator("feature_scores")
     @classmethod
@@ -111,6 +138,7 @@ class CompanyOut(BaseModel):
     feature_scores: dict[str, Any]
     qualitative_inputs: list[Any]
     data_source: str | None
+    uncertainty_inputs: dict[str, Any] | None
     entity_key: str | None
     period_label: str | None
     period_end: date | None
@@ -284,3 +312,125 @@ class ValidationRow(BaseModel):
 
 class ValidationRequest(BaseModel):
     panel: list[ValidationRow] = Field(min_length=3)
+
+
+# --------------------------------------------------------------------------
+# V3
+# --------------------------------------------------------------------------
+
+
+class UncertaintyRequest(BaseModel):
+    """Optional per-run overrides for the stored distributions.
+
+    Supplying ``uncertainty_inputs`` here runs the Monte Carlo over these
+    ranges without writing them to the company, which is what makes "what if I
+    am less sure about growth than I said" a one-request question.
+    """
+
+    uncertainty_inputs: dict[str, ThreePointIn] | None = Field(
+        default=None,
+        description=(
+            "Overrides the company's stored uncertainty_inputs for this run only. "
+            "Omit to use what is stored."
+        ),
+    )
+    persist_inputs: bool = Field(
+        default=False,
+        description="Also write these distributions back onto the company row.",
+    )
+
+
+class UncertaintyAnalysisOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    company_id: uuid.UUID
+    market_attractiveness_id: uuid.UUID | None
+    point_quadrant: str
+    modal_quadrant: str
+    quadrant_probabilities: dict[str, Any]
+    attractiveness_ci_90: list[Any]
+    strength_ci_90: list[Any]
+    entropy_bits: float
+    verdict_stability: str
+    draws: int
+    seed: int
+    calculation_basis: dict[str, Any]
+    generated_at: datetime | None
+
+
+class PortfolioMemberCreate(BaseModel):
+    company_id: uuid.UUID
+    revenue: float | None = Field(
+        default=None, ge=0, description="Bubble size, and the base of the harvest contribution"
+    )
+    capital_requested: float = Field(ge=0)
+    capital_floor: float = Field(
+        default=0.0,
+        ge=0,
+        description=(
+            "Minimum to keep the unit operating. Funded before anything "
+            "discretionary, and part of capital_requested rather than on top of it."
+        ),
+    )
+
+    @model_validator(mode="after")
+    def _floor_within_request(self) -> "PortfolioMemberCreate":
+        if self.capital_floor > self.capital_requested:
+            raise ValueError(
+                "capital_floor exceeds capital_requested. The floor is the "
+                "non-discretionary part of the request, not an amount on top of it."
+            )
+        return self
+
+
+class PortfolioCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=200)
+    description: str | None = Field(default=None, max_length=1000)
+    budget: float = Field(ge=0)
+    # Two, not one: GE-McKinsey is a comparison across units, and a portfolio of
+    # one is the single-company view the rest of the application already gives.
+    members: list[PortfolioMemberCreate] = Field(min_length=2)
+
+
+class PortfolioMemberOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    company_id: uuid.UUID
+    revenue: float | None
+    capital_requested: float
+    capital_floor: float
+
+
+class PortfolioOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    name: str
+    description: str | None
+    budget: float
+    members: list[PortfolioMemberOut]
+    created_at: datetime | None
+
+
+class AllocationRequest(BaseModel):
+    budget: float | None = Field(
+        default=None,
+        ge=0,
+        description="Overrides the portfolio's stored budget for this run only.",
+    )
+
+
+class AllocationRunOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    portfolio_id: uuid.UUID
+    budget: float
+    allocations: list[Any]
+    unfunded: list[Any]
+    marginal_unit: dict[str, Any] | None
+    harvest_contribution: float
+    calculation_basis: dict[str, Any]
+    generated_at: datetime | None

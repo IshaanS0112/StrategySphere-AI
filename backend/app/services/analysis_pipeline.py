@@ -19,14 +19,17 @@ from app.enums import MarginBasis
 from sqlalchemy import select
 
 from app.models import (
+    AllocationRun,
     Company,
     Competitor,
     MarketAttractiveness,
     PortersAnalysis,
+    Portfolio,
     PricingRecommendation,
     Scenario,
     StrategyReport,
     SwotAnalysis,
+    UncertaintyAnalysis,
 )
 from app.services import market_structure, report_generator
 from app.services.attractiveness_matrix import AttractivenessResult, run_attractiveness_matrix
@@ -415,3 +418,149 @@ def build_entity_timeline(db: Session, entity_key: str, settings: Settings) -> d
         "summary": result.summary,
         "calculation_basis": result.calculation_basis,
     }
+
+
+# --------------------------------------------------------------------------
+# V3
+# --------------------------------------------------------------------------
+
+
+def run_uncertainty(
+    db: Session,
+    company: Company,
+    settings: Settings,
+    *,
+    overrides: dict | None = None,
+    persist_inputs: bool = False,
+) -> UncertaintyAnalysis:
+    """Monte Carlo over the latest stored matrix result.
+
+    Reads the persisted matrix row rather than recomputing, for the same reason
+    the report generator and the sensitivity analysis do: the probabilities
+    must describe the placement the user is looking at.
+    """
+    from app.services.uncertainty import run_uncertainty_analysis
+
+    row = company.attractiveness_results[-1]
+    inputs = overrides if overrides is not None else (company.uncertainty_inputs or {})
+
+    result = run_uncertainty_analysis(
+        market_data=company.market_data or {},
+        uncertainty_inputs=inputs,
+        competitive_intensity_score=row.competitive_intensity_score,
+        competitive_strength_score=row.competitive_strength_score,
+        point_attractiveness=row.overall_attractiveness_score,
+        point_strength=row.competitive_strength_score,
+        point_quadrant=row.quadrant,
+        settings=settings,
+    )
+
+    if persist_inputs and overrides is not None:
+        company.uncertainty_inputs = overrides
+        db.add(company)
+
+    stored = UncertaintyAnalysis(
+        company_id=company.id,
+        market_attractiveness_id=row.id,
+        point_quadrant=result.point_verdict,
+        modal_quadrant=result.modal_quadrant,
+        quadrant_probabilities=result.quadrant_probabilities,
+        attractiveness_ci_90=result.attractiveness_ci,
+        strength_ci_90=result.strength_ci,
+        entropy_bits=result.entropy_bits,
+        verdict_stability=result.verdict_stability.value,
+        draws=result.draws,
+        seed=result.seed,
+        calculation_basis=result.calculation_basis,
+    )
+    db.add(stored)
+    db.commit()
+    db.refresh(stored)
+    return stored
+
+
+def portfolio_units(portfolio: Portfolio) -> tuple[list, list[str]]:
+    """Flatten members into engine units, reporting the ones that cannot play.
+
+    A member whose company has never been through the matrix has no position on
+    the grid, so it cannot be ranked. It is excluded and named rather than
+    given a neutral position, which would put an unscored unit ahead of a
+    genuinely weak one.
+    """
+    from app.services.portfolio import PortfolioUnit
+
+    units: list[PortfolioUnit] = []
+    unscored: list[str] = []
+
+    for member in portfolio.members:
+        company = member.company
+        if company is None or not company.attractiveness_results:
+            unscored.append(company.name if company else str(member.company_id))
+            continue
+        matrix = company.attractiveness_results[-1]
+        entropy = (
+            company.uncertainty_analyses[-1].entropy_bits
+            if company.uncertainty_analyses
+            else None
+        )
+        units.append(
+            PortfolioUnit(
+                entity_key=company.entity_key or str(company.id),
+                company_id=str(company.id),
+                name=company.name,
+                attractiveness=matrix.overall_attractiveness_score,
+                strength=matrix.competitive_strength_score,
+                quadrant=matrix.quadrant,
+                capital_requested=member.capital_requested,
+                capital_floor=member.capital_floor,
+                revenue=member.revenue,
+                period_label=company.period_label,
+                entropy_bits=entropy,
+            )
+        )
+    return units, unscored
+
+
+def run_allocation(
+    db: Session, portfolio: Portfolio, settings: Settings, *, budget: float | None = None
+) -> AllocationRun:
+    """Allocate a budget across the portfolio and store the run."""
+    from app.services.portfolio import PortfolioInputError, allocate_capital
+
+    units, unscored = portfolio_units(portfolio)
+    if unscored:
+        raise PortfolioInputError(
+            f"{len(unscored)} member(s) have no market attractiveness result: "
+            f"{', '.join(sorted(unscored))}. Run the matrix for each member first - "
+            "an unscored unit has no position to rank, and giving it a neutral one "
+            "would place it above units that were measured and came out weak."
+        )
+
+    effective_budget = portfolio.budget if budget is None else budget
+    result = allocate_capital(units, budget=effective_budget, settings=settings)
+
+    basis = dict(result.calculation_basis)
+    basis["pool"] = {
+        "budget": result.budget,
+        "harvest_contribution": result.harvest_contribution,
+        "pool": result.pool,
+        "floors_total": result.floors_total,
+        "discretionary_available": result.discretionary_available,
+        "discretionary_allocated": result.discretionary_allocated,
+        "unallocated": result.unallocated,
+    }
+    basis["warnings"] = result.warnings
+
+    row = AllocationRun(
+        portfolio_id=portfolio.id,
+        budget=result.budget,
+        allocations=[a.to_dict() for a in result.allocations],
+        unfunded=result.unfunded,
+        marginal_unit=result.marginal_unit,
+        harvest_contribution=result.harvest_contribution,
+        calculation_basis=basis,
+    )
+    db.add(row)
+    db.commit()
+    db.refresh(row)
+    return row

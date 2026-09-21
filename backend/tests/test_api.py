@@ -232,3 +232,340 @@ class TestFullPipeline:
             json={"cost_base": -10.0, "target_margin_pct": 0.3},
         )
         assert response.status_code == 422
+
+
+# --------------------------------------------------------------------------
+# V3
+# --------------------------------------------------------------------------
+
+
+class TestUncertaintyEndpoint:
+    def test_it_needs_a_matrix_first(self, client):
+        company_id = create_company(client)
+        response = client.post(f"/companies/{company_id}/uncertainty", json={})
+        assert response.status_code == 409
+        assert "matrix" in response.json()["detail"].lower()
+
+    def test_a_run_with_no_stated_uncertainty_is_decisive(self, client):
+        company_id = create_company(client)
+        client.post(f"/companies/{company_id}/swot-analysis")
+        client.post(f"/companies/{company_id}/market-attractiveness")
+        body = client.post(f"/companies/{company_id}/uncertainty", json={}).json()
+        assert body["entropy_bits"] == 0.0
+        assert body["verdict_stability"] == "DECISIVE"
+        assert body["quadrant_probabilities"][body["point_quadrant"]] == 1.0
+
+    def test_stated_ranges_produce_a_distribution(self, client):
+        company_id = create_company(client)
+        client.post(f"/companies/{company_id}/swot-analysis")
+        client.post(f"/companies/{company_id}/market-attractiveness")
+        response = client.post(
+            f"/companies/{company_id}/uncertainty",
+            json={
+                "uncertainty_inputs": {
+                    "market_growth_pct": {"low": 2.0, "mode": 16.0, "high": 22.0},
+                    "competitive_strength_score": {"low": 2.0, "mode": 3.4, "high": 4.5},
+                }
+            },
+        )
+        assert response.status_code == 201
+        body = response.json()
+        assert 0.0 < body["entropy_bits"] <= 1.585
+        assert sum(body["quadrant_probabilities"].values()) == 1.0
+        assert body["draws"] == 10000
+        low, high = body["attractiveness_ci_90"]
+        assert low <= high
+
+    def test_the_payload_states_that_the_ranges_are_analyst_supplied(self, client):
+        company_id = create_company(client)
+        client.post(f"/companies/{company_id}/swot-analysis")
+        client.post(f"/companies/{company_id}/market-attractiveness")
+        body = client.post(f"/companies/{company_id}/uncertainty", json={}).json()
+        assert "THE DISTRIBUTIONS ARE ANALYST-SUPPLIED" in body["calculation_basis"]
+
+    def test_a_mode_outside_its_range_is_a_422(self, client):
+        company_id = create_company(client)
+        client.post(f"/companies/{company_id}/swot-analysis")
+        client.post(f"/companies/{company_id}/market-attractiveness")
+        response = client.post(
+            f"/companies/{company_id}/uncertainty",
+            json={"uncertainty_inputs": {"market_growth_pct": {"low": 1, "mode": 9, "high": 5}}},
+        )
+        assert response.status_code == 422
+
+    def test_an_unsupported_input_is_a_422_not_a_silent_drop(self, client):
+        company_id = create_company(client)
+        client.post(f"/companies/{company_id}/swot-analysis")
+        client.post(f"/companies/{company_id}/market-attractiveness")
+        response = client.post(
+            f"/companies/{company_id}/uncertainty",
+            json={"uncertainty_inputs": {"gross_margin_pct": {"low": 1, "mode": 2, "high": 3}}},
+        )
+        assert response.status_code == 422
+
+    def test_persisting_inputs_writes_them_onto_the_company(self, client):
+        company_id = create_company(client)
+        client.post(f"/companies/{company_id}/swot-analysis")
+        client.post(f"/companies/{company_id}/market-attractiveness")
+        client.post(
+            f"/companies/{company_id}/uncertainty",
+            json={
+                "uncertainty_inputs": {
+                    "market_growth_pct": {"low": 10.0, "mode": 16.0, "high": 20.0}
+                },
+                "persist_inputs": True,
+            },
+        )
+        stored = client.get(f"/companies/{company_id}").json()["uncertainty_inputs"]
+        assert stored["market_growth_pct"]["mode"] == 16.0
+
+    def test_uncertainty_inputs_can_be_supplied_at_creation(self, client):
+        payload = {
+            **COMPANY,
+            "uncertainty_inputs": {
+                "market_growth_pct": {"low": 10.0, "mode": 16.0, "high": 24.0}
+            },
+        }
+        company_id = create_company(client, payload)
+        client.post(f"/companies/{company_id}/swot-analysis")
+        client.post(f"/companies/{company_id}/market-attractiveness")
+        body = client.post(f"/companies/{company_id}/uncertainty", json={}).json()
+        assert "market_growth_pct" in body["calculation_basis"]["sampled_inputs"]
+
+    def test_getting_it_before_running_it_is_404(self, client):
+        company_id = create_company(client)
+        assert client.get(f"/companies/{company_id}/uncertainty").status_code == 404
+
+
+def _scored_company(client, name: str, payload_overrides: dict | None = None) -> str:
+    payload = {**COMPANY, "name": name}
+    payload.update(payload_overrides or {})
+    company_id = create_company(client, payload)
+    client.post(f"/companies/{company_id}/swot-analysis")
+    client.post(f"/companies/{company_id}/market-attractiveness")
+    return company_id
+
+
+class TestPortfolioEndpoints:
+    def test_create_and_allocate(self, client):
+        first = _scored_company(client, "Alpha Unit")
+        second = _scored_company(client, "Beta Unit")
+        response = client.post(
+            "/portfolios",
+            json={
+                "name": "FY26 capital plan",
+                "budget": 150.0,
+                "members": [
+                    {"company_id": first, "revenue": 1000.0, "capital_requested": 100.0},
+                    {
+                        "company_id": second,
+                        "revenue": 500.0,
+                        "capital_requested": 100.0,
+                        "capital_floor": 25.0,
+                    },
+                ],
+            },
+        )
+        assert response.status_code == 201
+        portfolio_id = response.json()["id"]
+
+        run = client.post(f"/portfolios/{portfolio_id}/allocate", json={}).json()
+        assert run["budget"] == 150.0
+        assert len(run["allocations"]) == 2
+        assert sum(a["allocated"] for a in run["allocations"]) <= 150.0 + 1e-6
+        assert run["calculation_basis"]["status"].startswith("PROJECT-DEFINED")
+
+    def test_a_portfolio_of_one_is_refused(self, client):
+        only = _scored_company(client, "Solo Unit")
+        response = client.post(
+            "/portfolios",
+            json={
+                "name": "Solo",
+                "budget": 10.0,
+                "members": [{"company_id": only, "capital_requested": 10.0}],
+            },
+        )
+        assert response.status_code == 422
+
+    def test_an_unknown_company_is_404(self, client):
+        known = _scored_company(client, "Known Unit")
+        response = client.post(
+            "/portfolios",
+            json={
+                "name": "Bad",
+                "budget": 10.0,
+                "members": [
+                    {"company_id": known, "capital_requested": 5.0},
+                    {
+                        "company_id": "00000000-0000-0000-0000-000000000000",
+                        "capital_requested": 5.0,
+                    },
+                ],
+            },
+        )
+        assert response.status_code == 404
+
+    def test_the_same_company_twice_is_refused(self, client):
+        only = _scored_company(client, "Twice Unit")
+        response = client.post(
+            "/portfolios",
+            json={
+                "name": "Dupe",
+                "budget": 10.0,
+                "members": [
+                    {"company_id": only, "capital_requested": 5.0},
+                    {"company_id": only, "capital_requested": 5.0},
+                ],
+            },
+        )
+        assert response.status_code == 422
+        assert "compete against itself" in response.json()["detail"]
+
+    def test_an_unscored_member_is_a_409_naming_it(self, client):
+        scored = _scored_company(client, "Scored Unit")
+        unscored = create_company(client, {**COMPANY, "name": "Unscored Unit"})
+        portfolio_id = client.post(
+            "/portfolios",
+            json={
+                "name": "Half-scored",
+                "budget": 100.0,
+                "members": [
+                    {"company_id": scored, "capital_requested": 50.0},
+                    {"company_id": unscored, "capital_requested": 50.0},
+                ],
+            },
+        ).json()["id"]
+        response = client.post(f"/portfolios/{portfolio_id}/allocate", json={})
+        assert response.status_code == 409
+        assert "Unscored Unit" in response.json()["detail"]
+
+    def test_floors_above_the_budget_are_a_409_not_a_partial_plan(self, client):
+        first = _scored_company(client, "Floor A")
+        second = _scored_company(client, "Floor B")
+        portfolio_id = client.post(
+            "/portfolios",
+            json={
+                "name": "Underfunded",
+                "budget": 50.0,
+                "members": [
+                    {"company_id": first, "capital_requested": 100.0, "capital_floor": 100.0},
+                    {"company_id": second, "capital_requested": 100.0, "capital_floor": 100.0},
+                ],
+            },
+        ).json()["id"]
+        response = client.post(f"/portfolios/{portfolio_id}/allocate", json={})
+        assert response.status_code == 409
+        assert "Shortfall" in response.json()["detail"]
+
+    def test_a_floor_above_its_own_request_is_rejected_at_the_schema(self, client):
+        first = _scored_company(client, "Schema A")
+        second = _scored_company(client, "Schema B")
+        response = client.post(
+            "/portfolios",
+            json={
+                "name": "Bad floors",
+                "budget": 500.0,
+                "members": [
+                    {"company_id": first, "capital_requested": 10.0, "capital_floor": 90.0},
+                    {"company_id": second, "capital_requested": 10.0},
+                ],
+            },
+        )
+        assert response.status_code == 422
+
+    def test_a_per_run_budget_overrides_the_stored_one(self, client):
+        first = _scored_company(client, "Budget A")
+        second = _scored_company(client, "Budget B")
+        portfolio_id = client.post(
+            "/portfolios",
+            json={
+                "name": "Override",
+                "budget": 100.0,
+                "members": [
+                    {"company_id": first, "capital_requested": 100.0},
+                    {"company_id": second, "capital_requested": 100.0},
+                ],
+            },
+        ).json()["id"]
+        run = client.post(f"/portfolios/{portfolio_id}/allocate", json={"budget": 200.0}).json()
+        assert run["budget"] == 200.0
+        assert all(a["outcome"] == "FUNDED" for a in run["allocations"])
+
+    def test_runs_are_listed_and_the_portfolio_is_fetchable(self, client):
+        first = _scored_company(client, "List A")
+        second = _scored_company(client, "List B")
+        portfolio_id = client.post(
+            "/portfolios",
+            json={
+                "name": "Listable",
+                "budget": 100.0,
+                "members": [
+                    {"company_id": first, "capital_requested": 60.0},
+                    {"company_id": second, "capital_requested": 60.0},
+                ],
+            },
+        ).json()["id"]
+        client.post(f"/portfolios/{portfolio_id}/allocate", json={})
+        client.post(f"/portfolios/{portfolio_id}/allocate", json={"budget": 120.0})
+        runs = client.get(f"/portfolios/{portfolio_id}/allocations").json()
+        assert len(runs) == 2
+        assert client.get(f"/portfolios/{portfolio_id}").json()["name"] == "Listable"
+        assert any(p["id"] == portfolio_id for p in client.get("/portfolios").json())
+
+    def test_deleting_a_portfolio_does_not_delete_its_companies(self, client):
+        first = _scored_company(client, "Keep A")
+        second = _scored_company(client, "Keep B")
+        portfolio_id = client.post(
+            "/portfolios",
+            json={
+                "name": "Temporary",
+                "budget": 10.0,
+                "members": [
+                    {"company_id": first, "capital_requested": 5.0},
+                    {"company_id": second, "capital_requested": 5.0},
+                ],
+            },
+        ).json()["id"]
+        assert client.delete(f"/portfolios/{portfolio_id}").status_code == 204
+        assert client.get(f"/companies/{first}").status_code == 200
+
+    def test_an_unknown_portfolio_is_404(self, client):
+        assert client.get("/portfolios/00000000-0000-0000-0000-000000000000").status_code == 404
+
+
+class TestBenchmarkProvenanceEndpoint:
+    def test_it_reports_the_live_table(self, client):
+        body = client.get("/benchmarks/provenance").json()
+        assert "provenance" in body
+        assert "_default" in body["metrics_by_sector"]
+        assert "how_to_rebuild" in body
+
+    def test_it_admits_when_the_table_is_placeholders(self, client):
+        # The test suite runs with no INDUSTRY_BENCHMARKS_PATH, so this is the
+        # built-in table and the endpoint must say so rather than dressing it up.
+        body = client.get("/benchmarks/provenance").json()
+        assert body["is_edgar_sourced"] is False
+        assert "PLACEHOLDER" in body["provenance"]
+
+    def test_building_is_a_cli_job_not_an_endpoint(self, client):
+        response = client.post("/benchmarks/build")
+        assert response.status_code == 501
+        assert "build_benchmarks.py" in response.json()["detail"]
+
+
+class TestMethodologyV3:
+    def test_it_publishes_the_uncertainty_parameters(self, client):
+        body = client.get("/methodology").json()
+        assert body["uncertainty"]["draws"] == 10000
+        assert body["uncertainty"]["distribution"] == "PERT"
+        assert "ANALYST-SUPPLIED" in body["uncertainty"]["status"]
+
+    def test_it_publishes_the_allocation_rule_with_its_label(self, client):
+        body = client.get("/methodology").json()
+        assert body["portfolio_allocation"]["status"].startswith("PROJECT-DEFINED")
+        assert "General Electric" in body["portfolio_allocation"]["framework_note"]
+
+    def test_it_publishes_the_edgar_configuration(self, client):
+        body = client.get("/methodology").json()
+        assert body["edgar"]["min_sector_n"] == 20
+        assert body["edgar"]["requests_per_second"] == 5.0

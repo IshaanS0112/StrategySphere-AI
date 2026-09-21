@@ -15,6 +15,7 @@ if TYPE_CHECKING:  # pragma: no cover - typing only
         Scenario,
         StrategyReport,
         SwotAnalysis,
+        UncertaintyAnalysis,
     )
     from app.models.competitor import Competitor
 
@@ -65,6 +66,13 @@ class Company(Base):
     # "FY2024" < "FY9999" is fine but "Q3-2025" vs "Q11-2025" is not.
     period_end: Mapped[date | None] = mapped_column(Date)
 
+    # --- V3: stated uncertainty about the point inputs ---------------------
+    # {metric: {low, mode, high}} for the axis inputs the matrix reads. Absent
+    # means no distributions were stated, which is every V1 and V2 row and is
+    # exactly what the point-estimate pipeline assumes. Nothing is backfilled:
+    # inventing a range would be fabricating the analyst's own uncertainty.
+    uncertainty_inputs: Mapped[dict | None] = mapped_column(JsonBlob)
+
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utc_now, server_default=func.now()
     )
@@ -96,6 +104,11 @@ class Company(Base):
         back_populates="company",
         cascade="all, delete-orphan",
         order_by="Scenario.created_at",
+    )
+    uncertainty_analyses: Mapped[list["UncertaintyAnalysis"]] = relationship(
+        back_populates="company",
+        cascade="all, delete-orphan",
+        order_by="UncertaintyAnalysis.generated_at",
     )
     reports: Mapped[list["StrategyReport"]] = relationship(
         back_populates="company",

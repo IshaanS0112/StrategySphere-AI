@@ -198,3 +198,53 @@ class Scenario(Base):
     )
 
     company: Mapped["Company"] = relationship(back_populates="scenarios")
+
+
+# --------------------------------------------------------------------------
+# V3
+# --------------------------------------------------------------------------
+
+
+class UncertaintyAnalysis(Base):
+    """A Monte Carlo over analyst-stated input distributions.
+
+    The point verdict is deliberately stored alongside the modal one. They
+    disagree whenever the point estimate sits near a boundary that the sampled
+    mass straddles, and that disagreement is a finding about the inputs rather
+    than a conflict to resolve in favour of one of them.
+
+    ``seed`` and ``draws`` are columns, not basis entries, because a stored
+    probability is only quotable if the run that produced it can be repeated
+    exactly.
+    """
+
+    __tablename__ = "uncertainty_analyses"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    company_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("companies.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    market_attractiveness_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("market_attractiveness.id", ondelete="SET NULL")
+    )
+
+    point_quadrant: Mapped[str] = mapped_column(String(30), nullable=False)
+    modal_quadrant: Mapped[str] = mapped_column(String(30), nullable=False)
+
+    quadrant_probabilities: Mapped[dict] = mapped_column(JsonBlob, nullable=False, default=dict)
+    attractiveness_ci_90: Mapped[list] = mapped_column(JsonBlob, nullable=False, default=list)
+    strength_ci_90: Mapped[list] = mapped_column(JsonBlob, nullable=False, default=list)
+
+    # Shannon entropy over the three quadrant probabilities, in bits.
+    entropy_bits: Mapped[float] = mapped_column(Float, nullable=False)
+    verdict_stability: Mapped[str] = mapped_column(String(20), nullable=False)
+
+    draws: Mapped[int] = mapped_column(Integer, nullable=False)
+    seed: Mapped[int] = mapped_column(Integer, nullable=False)
+
+    calculation_basis: Mapped[dict] = mapped_column(JsonBlob, nullable=False, default=dict)
+    generated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utc_now, server_default=func.now()
+    )
+
+    company: Mapped["Company"] = relationship(back_populates="uncertainty_analyses")

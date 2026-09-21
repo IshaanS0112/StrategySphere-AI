@@ -28,6 +28,11 @@ def create_company(payload: CompanyCreate, db: DbSession):
         entity_key=payload.entity_key,
         period_label=payload.period_label,
         period_end=payload.period_end,
+        uncertainty_inputs=(
+            {key: value.model_dump() for key, value in payload.uncertainty_inputs.items()}
+            if payload.uncertainty_inputs
+            else None
+        ),
     )
     db.add(company)
     db.commit()
