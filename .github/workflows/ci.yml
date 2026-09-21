@@ -37,6 +37,28 @@ jobs:
         # CI needs no database container.
         run: python -m pytest -q
 
+      - name: EDGAR fixtures are regenerable and current
+        # The EDGAR tests run the real client against recorded-shape fixtures.
+        # If the generator and the committed files drift apart, the fixtures
+        # stop being reproducible and nobody notices until a test fails for an
+        # unrelated reason. Regenerating and diffing is the cheap guard.
+        #
+        # This matters more than it looks: the fixtures were once written from
+        # the same wrong assumption as the code (balance-sheet concepts under a
+        # duration period key), so they agreed with the code and both disagreed
+        # with the live API. See docs/architecture.md, bugs found in V3.
+        run: |
+          python tests/fixtures/edgar/make_fixtures.py
+          git diff --exit-code -- tests/fixtures/edgar
+
+      - name: No test opens a socket
+        # The whole EDGAR test suite injects its transport. A test that reaches
+        # data.sec.gov from CI would be both flaky and rude, so the absence of
+        # a real network call is asserted rather than assumed.
+        run: |
+          ! grep -rn "urlopen\|requests.get\|httpx.get" tests/ \
+            || (echo "a test appears to make a real HTTP call" && exit 1)
+
       - name: Migrations apply and roll back cleanly
         # A migration that cannot be reversed is a migration you cannot deploy
         # with confidence, so the round-trip is part of the contract.

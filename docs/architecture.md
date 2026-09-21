@@ -368,3 +368,269 @@ seven zeros.
   carries a standard error wider than the effect it measures.
 - **The validation harness has never been run on real data by me.** It is a
   harness, and the README says so.
+
+
+---
+
+# V3
+
+Four pillars, one additive migration, and the first honest answer to the
+question V1 asked and V2 made computable.
+
+## What V3 adds and why
+
+| Addition | The V2 gap it closes |
+|---|---|
+| EDGAR-sourced benchmarks | V2 admitted the industry table was "placeholder round numbers". Every factor not scored against a peer median was scored against a number I invented. |
+| Uncertainty propagation | Every input was a point estimate, so the verdict carried a confidence the inputs did not support. |
+| Portfolio allocation | GE-McKinsey was built for capital allocation across units. Scoring one company is the degenerate case. |
+| The validation actually run | V2 admitted the harness "has never been run on real data by me". |
+
+## Pillar A — where the benchmarks come from now
+
+`backend/app/services/edgar/` is the only package in the project permitted to
+make outbound network calls other than the LLM client, and it only ever talks
+to `data.sec.gov` — the SEC's official public REST API, no keys, JSON,
+published for external developers. Nothing parses HTML.
+
+**Compliance is a build requirement, not a footnote.**
+
+- `EDGAR_USER_AGENT` has no default. `EdgarClient` raises on construction when
+  it is unset, and again when it carries no contact address, so an anonymous
+  request never reaches SEC infrastructure. Offline mode is exempt: it never
+  opens a socket, and CI has no contact details to supply.
+- A token-bucket limiter caps outbound requests, and `Settings` refuses to load
+  above the published ceiling of 10/second. A limit you can raise past the
+  guidance by editing an env var is not a limit.
+- Every response is cached to disk by URL, and `--offline` serves the cache
+  only, failing with the URL and the expected path rather than reaching out.
+
+**XBRL tags are not uniform across filers**, which is the interesting part.
+Revenue is `RevenueFromContractWithCustomerExcludingAssessedTax`, `Revenues` or
+`SalesRevenueNet` depending on the filer and the year. Each metric carries an
+ordered candidate list; the tag that resolved is recorded per company; a
+company where none resolves is **dropped and counted, never imputed**. The
+resolution trace and the coverage rate go in the provenance block, because a
+table built from 4,102 of 7,421 filers with the drop reasons published beats
+one built from nine numbers I made up.
+
+**Two metrics are declared not derivable rather than approximated.** Market
+share needs a market definition no filing contains. Customer retention is not a
+US-GAAP concept. They are named in `NOT_DERIVABLE` with a reason, and the built
+table simply has no row for them.
+
+**Minimum sample.** A sector median is published only at `n >= 20`. Below that
+the sector is omitted entirely and lookups fall through to the all-filer
+median, which the payload states. A median of four companies is not an industry
+benchmark.
+
+**The sample bias, stated.** SIC classification is one request per company, so
+the all-filer median uses every filer that resolved a metric while sector
+medians cover the largest filers by revenue up to `edgar_sic_lookup_limit`.
+Sector medians therefore describe large filers in that sector, not all of them.
+
+### What changed when the numbers became real
+
+The shipped CY2024 table covers 6,085 filers and 14 sectors. Re-running the
+three case studies under it moved one verdict:
+
+| Case | Placeholder table | EDGAR table |
+|---|---|---|
+| `premium_saas` | `INVEST_GROW`, strength 3.667 | **`SELECTIVE_INVEST`** ⚠ borderline, strength 3.375 |
+| `contested_retail` | `SELECTIVE_INVEST` ⚠, strength 2.667 | `SELECTIVE_INVEST` ⚠, strength 2.500 |
+| `commodity_manufacturer` | `HARVEST_DIVEST`, strength 1.000 | `HARVEST_DIVEST`, strength 1.000 |
+
+`premium_saas` moved for two reasons. Market share is no longer scored at all,
+because it cannot be sourced from XBRL — and it had been a strength against an
+invented 8% band. And the surviving benchmarks got harder: the real SaaS
+net-margin median is 7.7% against the placeholder's 2.0%.
+
+**V2's sensitivity analysis predicted this exactly.** It reported `premium_saas`
+as `FRAGILE`, binding constraint strength −0.17. Replacing the invented
+benchmarks with real ones moved strength 0.29. The tool named its own weakest
+verdict before the data did, which is the strongest evidence in the repository
+that the sensitivity analysis is doing something real.
+
+`contested_retail` shows the placeholder bias running the other way: real
+retail carries 2.18x leverage against my invented 1.2x and earns 7.2% on
+capital against an invented 11%, so two factors that were weaknesses against
+made-up numbers are strengths against real ones.
+
+## Pillar B — how likely, not how far
+
+Any axis input may be a `{low, mode, high}` estimate. Ten thousand seeded draws
+run the **same** band-scoring and weighted sum the point pipeline runs — a
+second implementation would be a second model, and the probabilities would
+describe that one instead — and report quadrant probabilities, 90% credible
+intervals, and the Shannon entropy of the quadrant distribution in bits.
+
+Entropy is the number to put on screen next to the quadrant: 0 means every draw
+agreed, log2(3) = 1.585 means a three-way coin flip. It bands into
+`DECISIVE` / `LEANING` / `CONTESTED`.
+
+PERT rather than uniform because a three-point estimate carries a mode and
+uniform throws it away; PERT rather than triangular because it weights the mode
+more sensibly and is standard in project estimation. Neither is *correct* — the
+choice is a modelling assumption, it is recorded in `calculation_basis`, and
+both alternatives are selectable.
+
+**The limit, in the payload's own words.** The distributions are
+analyst-supplied. `P(INVEST_GROW) = 0.62` means 0.62 of the uncertainty *you
+stated*, not an objective probability. Inputs with no stated distribution are
+held fixed and listed, with a warning that the reported spread is therefore a
+**lower bound** on the real uncertainty.
+
+**Sensitivity and uncertainty answer different questions.** Sensitivity asks how
+far one input must move to flip the verdict, solved exactly. Uncertainty asks
+how likely each verdict is given everything stated. A `ROBUST` position with
+wide ranges can be `CONTESTED`; a `FRAGILE` one with tight ranges can be
+`DECISIVE`. Both payloads say so, and the disagreement is not reconciled
+because it is the informative part.
+
+## Pillar C — the framework used for its actual purpose
+
+McKinsey built the nine-box for General Electric in the early 1970s to allocate
+capital across GE's business units. **And it prescribes no allocation
+arithmetic**: it positions units and leaves the capital decision to management.
+So the rule below is mine and is labelled `PROJECT-DEFINED ALLOCATION RULE` in
+every payload, exactly as the Porter composite is.
+
+```
+priority_score = attractiveness x strength x (1 - entropy_bits / log2(3))
+```
+
+Conjunctive to match the matrix. Discounted by entropy so a contested position
+competes on worse terms than a decisive one at the same coordinates — which is
+the reason Pillar B computes an entropy at all. A unit with **no** uncertainty
+run is not discounted: unmeasured is not contested, and penalising a missing
+run would punish the wrong thing.
+
+Allocation, in order: fund every floor (erroring, not silently trimming, if the
+floors exceed the pool), take the harvest contribution from `HARVEST_DIVEST`
+units, allocate the remainder greedily by priority, then report the unfunded
+units **and the marginal one**. An allocator that returns only winners hides
+the decision it made.
+
+The greedy step is not the knapsack optimum and the basis says so. It is used
+because a committee can follow "in priority order until the money ran out" in a
+way it cannot follow an optimiser's answer.
+
+## Pillar D — the answer, and it is negative
+
+Full writeup in [validation_results.md](validation_results.md). The summary:
+
+**Across two three-year windows and 2,979 company-years, the GE-McKinsey
+quadrant does not predict subsequent revenue growth, and where the association
+is significant it points the wrong way. It never beats a baseline using revenue
+growth alone.**
+
+Three structural findings cost more than the p-values did:
+
+1. **The framework never produced all three quadrants.** Market inputs are
+   sector-level, so attractiveness is nearly a sector fixed effect. CY2020's
+   maximum attractiveness across 1,484 companies was 3.40, below the 3.5
+   threshold — `INVEST_GROW` was arithmetically unreachable for the whole panel.
+2. **HHI over a filer population is always `UNCONCENTRATED`**, so every company
+   got the same maximum rivalry score. A term constant across the panel carries
+   no information while consuming 0.6 of the attractiveness range. On a
+   hand-built set of four named rivals the term works as designed; on a
+   population panel it does not.
+3. **Population-relative benchmarking centres the strength axis** by
+   construction — half the population is above its sector median by definition.
+
+Look-ahead bias is stated rather than hidden: CY2020 facts are filed in early
+2021, which biases the test *toward* the model looking good, and it still did
+not look good. Survivorship is stated too: 1,173 companies were dropped for
+reporting no CY2023 revenue, which removes the worst outcomes and hits
+`HARVEST_DIVEST` hardest, so the reported inversion is if anything an
+understatement.
+
+## Schema change
+
+One additive migration. `uncertainty_inputs` is a nullable column on
+`companies`; `uncertainty_analyses`, `portfolios`, `portfolio_members` and
+`allocation_runs` are new tables. Nothing is backfilled — a row with no stated
+distributions is every V1 and V2 row, and inventing a range would be
+fabricating the analyst's own uncertainty, which is the one thing this feature
+must never do.
+
+`portfolio_members` points at `companies` rather than a new entity table, so a
+member is a pointer at a company-period row that has already been scored. One
+scored row, read by both views.
+
+## Bugs found while building V3
+
+**Both balance-sheet ratios resolved zero companies on the first live build.**
+Return on capital and debt-to-equity came back with 0% coverage against a
+working API and a passing test suite. The frames endpoint splits facts by kind:
+income-statement concepts are *durations* and live under `CY2024`, while
+balance-sheet concepts are *instants* and live under `CY2024Q4I`. Asking for
+`Assets` at `CY2024` is a 404, so every ratio with a balance-sheet leg had an
+empty denominator and dropped its entire universe.
+
+The tests did not catch it because I had written the fixtures from the same
+wrong assumption as the code — the fixture files filed `Assets` under the
+duration key, so the fixture universe and the code agreed with each other and
+both disagreed with reality. **A fixture written from the same misunderstanding
+as the code under test proves the code is self-consistent and nothing else.**
+Only a live run could have found this. Fixed with per-leg period selection on
+`MetricSpec`, and the fixtures now file those concepts under the instant key so
+they cannot drift from the live API again. Coverage went 0% → 71.6% and
+0% → 67.2%.
+
+**The benchmark loader would have crashed the API on its own output.** V2's
+loader coerced every value in a row with `float()`, inside a comprehension
+guarded only against `OSError` and `JSONDecodeError`. A table carrying
+`"_basis": "EDGAR_SECTOR_MEDIAN"` — which is exactly the shape Pillar A emits —
+would have raised `ValueError` at startup on a perfectly well-formed file. The
+loader now separates underscore-prefixed row metadata from metric values and
+ignores non-numeric metrics with a warning.
+
+**An unpinned transitive dependency had broken CI.** `starlette` 0.41.3 imports
+`anyio.abc.BlockingPortal`, which anyio deprecated in 4.10, and `pytest.ini`
+turns `DeprecationWarning` into an error — so a fresh `pip install` turned every
+`TestClient` test into a collection error, on a commit that changed nothing.
+Found by installing the repo from scratch, which is the one thing a developer
+with a warm virtualenv never does. `anyio` is now pinned with the reason in the
+requirements file.
+
+**Portfolio path parameters were typed as `str`.** `Session.get()` with a
+string primary key against a `Uuid` column raises `StatementError` on SQLite
+rather than returning `None`, so an unknown portfolio id was a 500 instead of a
+404. Typed as `uuid.UUID`, which also makes a malformed id a 422 at the
+boundary.
+
+**A bubble label ran off the portfolio grid.** A unit at the floor of either
+axis sits on the plot edge, and a centred label there is clipped — which hit the
+name of the `HARVEST_DIVEST` unit, the one a reader most wants to identify.
+Labels now anchor inward near the edges. Found by looking at the rendered page,
+not by a test.
+
+**The Monte Carlo would have scored missing market axes as 1 instead of 3.**
+The point matrix imputes a neutral 3.0 for a market axis nobody supplied. The
+first draft of the sampler used `sampled.get(key, 0.0)`, which band-scores to 1
+— so a company with no market data would have had its probabilities computed
+against a different company from the one on its own matrix. Caught before it
+shipped by asking what the degenerate case should return, and pinned by a test
+that asserts a no-distribution run reproduces the stored matrix exactly.
+
+## Deliberate limitations, still
+
+- **`POST /benchmarks/build` returns 501 on purpose.** Building the table makes
+  hundreds of rate-limited requests to a public government API over several
+  minutes. Behind an unauthenticated endpoint that is a way for any caller to
+  spend the operator's SEC rate budget, and the operator would hear about it
+  from the SEC rather than from their own logs. It is a CLI job. The route
+  exists so the answer is discoverable rather than a 404.
+- **Still no authentication.** Unchanged from V1 and V2, still correct for a
+  single-user analysis tool.
+- **Uncertainty ranges are analyst guesses.** True, and stated in the payload.
+  The entropy measures *stated* uncertainty, which is strictly more information
+  than a bare point verdict but is not an objective probability.
+- **Only US filers.** The XBRL frames API is US-GAAP. India has no free
+  structured equivalent, so NSE/BSE ingestion needs a different pipeline and is
+  scoped as V4 rather than half-built.
+- **Panel construction has look-ahead bias.** Filing-date-aware assembly is V4.
+- **The entropy discount is steep.** At 0.82 bits a unit's priority is roughly
+  halved. That is a deliberate choice and a defensible one, but it is a choice,
+  and a different committee would pick a different curve.
