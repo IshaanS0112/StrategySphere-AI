@@ -201,3 +201,102 @@ export interface Timeline {
   summary: string;
   calculation_basis: Record<string, any>;
 }
+
+// --- V3 ---
+
+export type VerdictStability = "DECISIVE" | "LEANING" | "CONTESTED";
+
+export type AllocationOutcome =
+  | "FUNDED"
+  | "PARTIALLY_FUNDED"
+  | "FLOOR_ONLY"
+  | "UNFUNDED"
+  | "CONTRIBUTOR";
+
+export interface ThreePoint {
+  low: number;
+  mode: number;
+  high: number;
+}
+
+export interface UncertaintyAnalysis {
+  id: string;
+  company_id: string;
+  market_attractiveness_id: string | null;
+  /** The point verdict stays the headline; the distribution sits beside it. */
+  point_quadrant: Quadrant;
+  modal_quadrant: Quadrant;
+  quadrant_probabilities: Record<string, number>;
+  attractiveness_ci_90: number[];
+  strength_ci_90: number[];
+  /** Shannon entropy over the three quadrant probabilities. 0 = certain, 1.585 = a coin flip. */
+  entropy_bits: number;
+  verdict_stability: VerdictStability;
+  draws: number;
+  seed: number;
+  calculation_basis: Record<string, any>;
+  generated_at: string | null;
+}
+
+export interface PortfolioMember {
+  id: string;
+  company_id: string;
+  revenue: number | null;
+  capital_requested: number;
+  capital_floor: number;
+}
+
+export interface Portfolio {
+  id: string;
+  name: string;
+  description: string | null;
+  budget: number;
+  members: PortfolioMember[];
+  created_at: string | null;
+}
+
+export interface AllocationEntry {
+  entity_key: string;
+  company_id: string;
+  name: string;
+  quadrant: Quadrant;
+  attractiveness: number;
+  strength: number;
+  entropy_bits: number | null;
+  entropy_discount: number;
+  priority_score: number;
+  revenue: number | null;
+  capital_requested: number;
+  capital_floor: number;
+  allocated: number;
+  contributed: number;
+  net_capital: number;
+  outcome: AllocationOutcome;
+  reason: string;
+  rank: number;
+}
+
+export interface AllocationRun {
+  id: string;
+  portfolio_id: string;
+  budget: number;
+  allocations: AllocationEntry[];
+  unfunded: Record<string, any>[];
+  marginal_unit: Record<string, any> | null;
+  harvest_contribution: number;
+  calculation_basis: Record<string, any>;
+  generated_at: string | null;
+}
+
+export interface BenchmarkProvenance {
+  path: string | null;
+  provenance: string;
+  is_edgar_sourced: boolean;
+  sectors: string[];
+  sector_count: number;
+  metrics_by_sector: Record<string, string[]>;
+  row_basis: Record<string, string>;
+  sample_sizes: Record<string, Record<string, number | null>>;
+  detail: Record<string, any> | null;
+  how_to_rebuild: string;
+}

@@ -12,16 +12,26 @@ import type {
   Sensitivity,
   StrategyReport,
   SwotAnalysis,
+  ThreePoint,
+  UncertaintyAnalysis,
 } from "../api/types";
 import AttractivenessMatrix from "../components/AttractivenessMatrix";
 import PortersView from "../components/PortersView";
 import ScenarioPanel from "../components/ScenarioPanel";
-import SensitivityPanel from "../components/SensitivityPanel";
 import PricingView from "../components/PricingView";
 import ReportView from "../components/ReportView";
+import SensitivityPanel from "../components/SensitivityPanel";
 import SWOTGrid from "../components/SWOTGrid";
+import UncertaintyPanel from "../components/UncertaintyPanel";
 
-type Stage = "swot" | "matrix" | "pricing" | "report" | "porters" | "scenario";
+type Stage =
+  | "swot"
+  | "matrix"
+  | "pricing"
+  | "report"
+  | "porters"
+  | "scenario"
+  | "uncertainty";
 
 function StageShell({
   index,
@@ -65,6 +75,7 @@ export default function CompanyDetail() {
   const [porters, setPorters] = useState<PortersAnalysis | null>(null);
   const [sensitivity, setSensitivity] = useState<Sensitivity | null>(null);
   const [scenarios, setScenarios] = useState<Scenario[]>([]);
+  const [uncertainty, setUncertainty] = useState<UncertaintyAnalysis | null>(null);
 
   const [costBase, setCostBase] = useState("100");
   const [margin, setMargin] = useState("40");
@@ -76,7 +87,7 @@ export default function CompanyDetail() {
   const load = useCallback(async () => {
     setError(null);
     try {
-      const [c, comps, s, m, p, r, pf, sc] = await Promise.all([
+      const [c, comps, s, m, p, r, pf, sc, unc] = await Promise.all([
         api.getCompany(companyId),
         api.listCompetitors(companyId),
         optional(api.getSwot(companyId)),
@@ -85,6 +96,7 @@ export default function CompanyDetail() {
         optional(api.getReport(companyId)),
         optional(api.getPorters(companyId)),
         api.listScenarios(companyId),
+        optional(api.getUncertainty(companyId)),
       ]);
       setCompany(c);
       setCompetitors(comps);
@@ -94,6 +106,7 @@ export default function CompanyDetail() {
       setReport(r);
       setPorters(pf);
       setScenarios(sc);
+      setUncertainty(unc);
       // Sensitivity is derived from the stored matrix row, so it only exists
       // once the matrix has been run. A 409 here is expected, not an error.
       setSensitivity(m ? await api.getSensitivity(companyId).catch(() => null) : null);
@@ -125,6 +138,25 @@ export default function CompanyDetail() {
       }
       if (stage === "report") setReport(await api.runReport(companyId));
       if (stage === "porters") setPorters(await api.runPorters(companyId));
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function runUncertainty(inputs: Record<string, ThreePoint> | undefined) {
+    setBusy("uncertainty");
+    setError(null);
+    try {
+      setUncertainty(
+        await api.runUncertainty(companyId, {
+          uncertainty_inputs: inputs,
+          // Stated ranges are persisted so the next run of this company starts
+          // from the same assumptions rather than from nothing.
+          persist_inputs: inputs !== undefined,
+        }),
+      );
     } catch (err) {
       setError((err as Error).message);
     } finally {
@@ -368,6 +400,25 @@ export default function CompanyDetail() {
 
       <StageShell
         index={7}
+        title="Uncertainty"
+        subtitle="Every input above is a point estimate. State a range for any of them and 10,000 seeded draws report how likely each quadrant is, with the Shannon entropy of that distribution as a single measure of how much the verdict survives."
+        action={<span className="text-xs text-slate-600">needs a matrix result</span>}
+      >
+        {matrix ? (
+          <UncertaintyPanel
+            result={uncertainty}
+            busy={busy === "uncertainty"}
+            onRun={(inputs) => void runUncertainty(inputs)}
+          />
+        ) : (
+          <p className="panel p-5 text-sm text-slate-500">
+            Blocked: the Monte Carlo resamples a stored placement.
+          </p>
+        )}
+      </StageShell>
+
+      <StageShell
+        index={8}
         title="What-if scenarios"
         subtitle="Recompute the pipeline under a named set of overrides and diff against the stored baseline. Nothing here mutates the company."
         action={<span className="text-xs text-slate-600">{scenarios.length} saved</span>}

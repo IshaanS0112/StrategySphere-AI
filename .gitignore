@@ -20,3 +20,6 @@ data/edgar_cache/
 # committed; anything else you build locally is not.
 data/benchmarks/*.json
 !data/benchmarks/edgar_CY2024.json
+
+# tsc --build leaves this behind; it is a local cache, not source.
+tsconfig.tsbuildinfo

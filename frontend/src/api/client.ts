@@ -1,4 +1,6 @@
 import type {
+  AllocationRun,
+  BenchmarkProvenance,
   Company,
   Competitor,
   MarketAttractiveness,
@@ -6,10 +8,13 @@ import type {
   PortersAnalysis,
   PricingRecommendation,
   Scenario,
+  Portfolio,
   Sensitivity,
   StrategyReport,
   SwotAnalysis,
+  ThreePoint,
   Timeline,
+  UncertaintyAnalysis,
 } from "./types";
 
 // In dev, Vite proxies /api -> :8000. In the Docker image, nginx does the same.
@@ -151,6 +156,43 @@ export const api = {
     }),
   deleteScenario: (id: string, scenarioId: string) =>
     request<void>(`/companies/${id}/scenarios/${scenarioId}`, { method: "DELETE" }),
+
+  // --- V3 ---
+  runUncertainty: (
+    id: string,
+    body: { uncertainty_inputs?: Record<string, ThreePoint>; persist_inputs?: boolean },
+  ) =>
+    request<UncertaintyAnalysis>(`/companies/${id}/uncertainty`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  getUncertainty: (id: string) =>
+    request<UncertaintyAnalysis>(`/companies/${id}/uncertainty`),
+
+  listPortfolios: () => request<Portfolio[]>("/portfolios"),
+  getPortfolio: (id: string) => request<Portfolio>(`/portfolios/${id}`),
+  createPortfolio: (body: {
+    name: string;
+    description?: string;
+    budget: number;
+    members: {
+      company_id: string;
+      revenue?: number | null;
+      capital_requested: number;
+      capital_floor?: number;
+    }[];
+  }) =>
+    request<Portfolio>("/portfolios", { method: "POST", body: JSON.stringify(body) }),
+  deletePortfolio: (id: string) =>
+    request<void>(`/portfolios/${id}`, { method: "DELETE" }),
+  allocate: (id: string, body: { budget?: number }) =>
+    request<AllocationRun>(`/portfolios/${id}/allocate`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  listAllocations: (id: string) => request<AllocationRun[]>(`/portfolios/${id}/allocations`),
+
+  benchmarkProvenance: () => request<BenchmarkProvenance>("/benchmarks/provenance"),
 
   listEntities: () =>
     request<{ entity_key: string; name: string; periods: (string | null)[] }[]>("/entities"),

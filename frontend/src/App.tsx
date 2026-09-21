@@ -3,6 +3,7 @@ import { Link, Route, Routes } from "react-router-dom";
 import CompanyDetail from "./pages/CompanyDetail";
 import Dashboard from "./pages/Dashboard";
 import NewCompany from "./pages/NewCompany";
+import PortfolioView from "./pages/PortfolioView";
 import TimelineView from "./pages/TimelineView";
 
 export default function App() {
@@ -14,9 +15,13 @@ export default function App() {
             Strategy<span className="text-accent">Sphere</span>
           </Link>
           <p className="mt-1 text-xs text-slate-500">
-            SWOT · GE-McKinsey · Porter’s Five Forces · pricing · sensitivity · scenarios
+            SWOT · GE-McKinsey · Porter’s Five Forces · pricing · sensitivity ·
+            uncertainty · portfolio allocation
           </p>
         </div>
+        <Link to="/portfolios" className="btn-ghost">
+          Portfolio
+        </Link>
       </header>
 
       <Routes>
@@ -24,6 +29,8 @@ export default function App() {
         <Route path="/new" element={<NewCompany />} />
         <Route path="/companies/:companyId" element={<CompanyDetail />} />
         <Route path="/entities/:entityKey" element={<TimelineView />} />
+        <Route path="/portfolios" element={<PortfolioView />} />
+        <Route path="/portfolios/:portfolioId" element={<PortfolioView />} />
         <Route
           path="*"
           element={
