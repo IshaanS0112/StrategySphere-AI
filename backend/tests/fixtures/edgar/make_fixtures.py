@@ -162,13 +162,21 @@ def build() -> dict[str, dict]:
         "OperatingIncomeLoss", "CY2024", operating_income
     )
     files["frames-NetIncomeLoss-CY2024"] = frame("NetIncomeLoss", "CY2024", net_income)
-    files["frames-Assets-CY2024"] = frame("Assets", "CY2024", assets)
-    files["frames-Liabilities-CY2024"] = frame("Liabilities", "CY2024", liabilities)
-    files["frames-StockholdersEquity-CY2024"] = frame("StockholdersEquity", "CY2024", equity)
+    # Balance-sheet concepts are INSTANTANEOUS and live under CY2024Q4I, not
+    # CY2024. Filing them here under the duration key would make the fixtures
+    # disagree with the live API in exactly the way that cost the first real
+    # build two whole metrics.
+    files["frames-Assets-CY2024Q4I"] = frame("Assets", "CY2024Q4I", assets)
+    files["frames-Liabilities-CY2024Q4I"] = frame("Liabilities", "CY2024Q4I", liabilities)
+    files["frames-StockholdersEquity-CY2024Q4I"] = frame(
+        "StockholdersEquity", "CY2024Q4I", equity
+    )
     files[
-        "frames-StockholdersEquityIncludingPortionAttributableToNoncontrollingInterest-CY2024"
+        "frames-StockholdersEquityIncludingPortionAttributableToNoncontrollingInterest-CY2024Q4I"
     ] = frame(
-        "StockholdersEquityIncludingPortionAttributableToNoncontrollingInterest", "CY2024", []
+        "StockholdersEquityIncludingPortionAttributableToNoncontrollingInterest",
+        "CY2024Q4I",
+        [],
     )
     files["frames-ResearchAndDevelopmentExpense-CY2024"] = frame(
         "ResearchAndDevelopmentExpense", "CY2024", rnd

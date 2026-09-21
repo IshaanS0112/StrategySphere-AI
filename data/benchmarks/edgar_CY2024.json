@@ -1,0 +1,708 @@
+{
+  "_default": {
+    "_basis": "EDGAR_ALL_FILER_MEDIAN",
+    "_meta": {
+      "debt_to_equity": {
+        "basis": "EDGAR_ALL_FILER_MEDIAN",
+        "n": 4338
+      },
+      "gross_margin_pct": {
+        "basis": "EDGAR_ALL_FILER_MEDIAN",
+        "n": 2378
+      },
+      "net_margin_pct": {
+        "basis": "EDGAR_ALL_FILER_MEDIAN",
+        "n": 3911
+      },
+      "operating_margin_pct": {
+        "basis": "EDGAR_ALL_FILER_MEDIAN",
+        "n": 3596
+      },
+      "return_on_capital_pct": {
+        "basis": "EDGAR_ALL_FILER_MEDIAN",
+        "n": 4626
+      },
+      "revenue_growth_pct": {
+        "basis": "EDGAR_ALL_FILER_MEDIAN",
+        "n": 4242
+      },
+      "rnd_intensity_pct": {
+        "basis": "EDGAR_ALL_FILER_MEDIAN",
+        "n": 1860
+      }
+    },
+    "_n": 6085,
+    "debt_to_equity": 1.155,
+    "gross_margin_pct": 37.9911,
+    "net_margin_pct": 1.096,
+    "operating_margin_pct": 2.0012,
+    "return_on_capital_pct": -1.4619,
+    "revenue_growth_pct": 3.4707,
+    "rnd_intensity_pct": 10.7971
+  },
+  "_provenance": {
+    "built_at": "2026-09-21T04:20:10+00:00",
+    "companies_considered": 6085,
+    "coverage_by_metric": {
+      "debt_to_equity": {
+        "coverage_pct": 67.22,
+        "drop_reasons": {
+          "no Liabilities candidate resolved": 828,
+          "no StockholdersEquity candidate resolved": 147,
+          "non-positive denominator": 1121,
+          "outside plausible range": 19
+        },
+        "dropped": 2115,
+        "resolved": 4338
+      },
+      "gross_margin_pct": {
+        "coverage_pct": 48.15,
+        "drop_reasons": {
+          "no GrossProfit candidate resolved": 2313,
+          "no RevenueFromContractWithCustomerExcludingAssessedTax candidate resolved": 168,
+          "non-positive denominator": 41,
+          "outside plausible range": 39
+        },
+        "dropped": 2561,
+        "resolved": 2378
+      },
+      "net_margin_pct": {
+        "coverage_pct": 62.57,
+        "drop_reasons": {
+          "no NetIncomeLoss candidate resolved": 193,
+          "no RevenueFromContractWithCustomerExcludingAssessedTax candidate resolved": 1480,
+          "non-positive denominator": 183,
+          "outside plausible range": 484
+        },
+        "dropped": 2340,
+        "resolved": 3911
+      },
+      "operating_margin_pct": {
+        "coverage_pct": 63.57,
+        "drop_reasons": {
+          "no OperatingIncomeLoss candidate resolved": 642,
+          "no RevenueFromContractWithCustomerExcludingAssessedTax candidate resolved": 886,
+          "non-positive denominator": 152,
+          "outside plausible range": 381
+        },
+        "dropped": 2061,
+        "resolved": 3596
+      },
+      "return_on_capital_pct": {
+        "coverage_pct": 71.62,
+        "drop_reasons": {
+          "no Assets candidate resolved": 192,
+          "no OperatingIncomeLoss candidate resolved": 1444,
+          "non-positive denominator": 16,
+          "outside plausible range": 181
+        },
+        "dropped": 1833,
+        "resolved": 4626
+      },
+      "revenue_growth_pct": {
+        "coverage_pct": 80.65,
+        "drop_reasons": {
+          "no revenue tag resolved for CY2023": 236,
+          "no revenue tag resolved for CY2024": 489,
+          "non-positive prior-period revenue": 167,
+          "outside plausible range": 45,
+          "revenue tag differs between the two periods": 81
+        },
+        "dropped": 1018,
+        "resolved": 4242
+      },
+      "rnd_intensity_pct": {
+        "coverage_pct": 35.56,
+        "drop_reasons": {
+          "no ResearchAndDevelopmentExpense candidate resolved": 2689,
+          "no RevenueFromContractWithCustomerExcludingAssessedTax candidate resolved": 459,
+          "non-positive denominator": 71,
+          "outside plausible range": 151
+        },
+        "dropped": 3370,
+        "resolved": 1860
+      }
+    },
+    "derivation_notes": {
+      "debt_to_equity": "Total liabilities over book equity: a solvency ratio, not a financial-debt ratio. Interest-bearing debt is tagged too inconsistently across filers to resolve through a candidate list. Companies with negative book equity are dropped rather than reported as a negative leverage multiple, which reads as the opposite of what it means.",
+      "return_on_capital_pct": "EBIT over total assets, not the textbook EBIT / (assets - current liabilities). LiabilitiesCurrent is materially less widely tagged than Assets, and the textbook denominator would have cost roughly a third of the coverage for a refinement smaller than the spread between filers. The deviation is stated rather than hidden, and the resulting figure is systematically LOWER than a true ROCE. The denominator is the balance at period end (an instantaneous frame) against a full-year numerator, which is the standard pairing: same fiscal year, not a mismatched one.",
+      "revenue_growth_pct": "Revenue for period T over revenue for T-1, both resolved through the same ordered candidate list. A company that resolved one period and not the other is dropped: comparing a post-606 revenue tag in T against a legacy tag in T-1 compares two different definitions.",
+      "rnd_intensity_pct": "Only filers that tag an R&D expense resolve this, which is a selection effect and not a coverage failure: a company with no R&D line generally has no R&D. The sector median is therefore the median AMONG SPENDERS and reads high. Stated in the provenance block."
+    },
+    "fetch_stats": {
+      "cache_hits": 1510,
+      "cache_writes": 0,
+      "failures": 0,
+      "requests_made": 0,
+      "seconds_waiting": 0.0
+    },
+    "frames_requests": 14,
+    "how_to_read_the_default_row": "The _default row is the median across EVERY filer that resolved the metric, which is a very different population from a sector: it includes pre-revenue, shell and micro-cap registrants in numbers that a sector median of large filers does not. That is why the all-filer net margin sits near zero and the all-filer return on capital is negative - the median SEC registrant is roughly breakeven, which is true and surprising rather than a defect. A company benchmarked against _default will therefore look stronger than one benchmarked against its own sector. Supplying competitor financials, so the engine uses a peer-set median, remains the intended path and overrides this table entirely.",
+    "method": "One frames request per candidate tag per period. Ratios take both legs from the same unit and period, so a numerator can never be divided by a denominator from a different year. Companies where no candidate tag resolves are dropped and counted, never imputed. Medians, not means: one filer with a unit error should not move a benchmark.",
+    "metrics_not_derivable": {
+      "customer_retention_pct": "Not a US-GAAP concept. Some SaaS filers disclose net revenue retention in prose or in a custom extension taxonomy; neither is queryable through the standardised frames API, and a median built from the handful that do would describe those filers only.",
+      "market_share_pct": "Market share requires a market definition. No filing contains one, and the denominator a filer would use is not comparable to the one a rival would use. Inventing it would be the exact failure this project exists to avoid."
+    },
+    "min_sector_n": 20,
+    "period": "CY2024",
+    "prior_period_for_growth": "CY2023",
+    "sectors_below_min_n": {
+      "agriculture": {
+        "best_metric_n": 6,
+        "classified_members": 6
+      },
+      "mining": {
+        "best_metric_n": 8,
+        "classified_members": 8
+      },
+      "real_estate": {
+        "best_metric_n": 15,
+        "classified_members": 15
+      }
+    },
+    "sectors_published": [
+      "biotech",
+      "construction",
+      "energy",
+      "financials",
+      "healthcare",
+      "manufacturing",
+      "retail",
+      "saas",
+      "semiconductors",
+      "services",
+      "telecom",
+      "transport",
+      "utilities",
+      "wholesale"
+    ],
+    "sic_sample": {
+      "bias": "Sector medians therefore describe LARGE filers in that sector, not all of them. The all-filer median in _default uses the entire resolved universe, because it needs no SIC lookup. This is the trade the published rate limit forces: SIC classification is one request per company.",
+      "companies_requested": 1500,
+      "limit": 1500,
+      "lookups_failed": 2,
+      "lookups_succeeded": 1498,
+      "rule": "the largest filers by reported revenue that resolved at least one metric, capped at sic_lookup_limit",
+      "unclassified": 0
+    },
+    "source": "SEC EDGAR XBRL frames API, data.sec.gov",
+    "tag_resolution": {
+      "debt_to_equity": {
+        "Liabilities/StockholdersEquity": 4169,
+        "Liabilities/StockholdersEquityIncludingPortionAttributableToNoncontrollingInterest": 169
+      },
+      "gross_margin_pct": {
+        "GrossProfit/RevenueFromContractWithCustomerExcludingAssessedTax": 1576,
+        "GrossProfit/Revenues": 802
+      },
+      "net_margin_pct": {
+        "NetIncomeLoss/RevenueFromContractWithCustomerExcludingAssessedTax": 2533,
+        "NetIncomeLoss/Revenues": 1378
+      },
+      "operating_margin_pct": {
+        "OperatingIncomeLoss/RevenueFromContractWithCustomerExcludingAssessedTax": 2447,
+        "OperatingIncomeLoss/Revenues": 1149
+      },
+      "return_on_capital_pct": {
+        "OperatingIncomeLoss/Assets": 4626
+      },
+      "revenue_growth_pct": {
+        "RevenueFromContractWithCustomerExcludingAssessedTax": 2764,
+        "Revenues": 1478
+      },
+      "rnd_intensity_pct": {
+        "ResearchAndDevelopmentExpense/RevenueFromContractWithCustomerExcludingAssessedTax": 1345,
+        "ResearchAndDevelopmentExpense/Revenues": 515
+      }
+    }
+  },
+  "biotech": {
+    "_basis": "EDGAR_SECTOR_MEDIAN",
+    "_meta": {
+      "debt_to_equity": {
+        "basis": "EDGAR_SECTOR_MEDIAN",
+        "n": 32
+      },
+      "net_margin_pct": {
+        "basis": "EDGAR_SECTOR_MEDIAN",
+        "n": 45
+      },
+      "operating_margin_pct": {
+        "basis": "EDGAR_SECTOR_MEDIAN",
+        "n": 36
+      },
+      "return_on_capital_pct": {
+        "basis": "EDGAR_SECTOR_MEDIAN",
+        "n": 34
+      },
+      "revenue_growth_pct": {
+        "basis": "EDGAR_SECTOR_MEDIAN",
+        "n": 44
+      },
+      "rnd_intensity_pct": {
+        "basis": "EDGAR_SECTOR_MEDIAN",
+        "n": 23
+      }
+    },
+    "_n": 46,
+    "debt_to_equity": 1.1108,
+    "net_margin_pct": 8.9127,
+    "operating_margin_pct": 10.5605,
+    "return_on_capital_pct": 5.8974,
+    "revenue_growth_pct": 6.0816,
+    "rnd_intensity_pct": 13.1648
+  },
+  "construction": {
+    "_basis": "EDGAR_SECTOR_MEDIAN",
+    "_meta": {
+      "debt_to_equity": {
+        "basis": "EDGAR_SECTOR_MEDIAN",
+        "n": 30
+      },
+      "gross_margin_pct": {
+        "basis": "EDGAR_SECTOR_MEDIAN",
+        "n": 21
+      },
+      "net_margin_pct": {
+        "basis": "EDGAR_SECTOR_MEDIAN",
+        "n": 35
+      },
+      "operating_margin_pct": {
+        "basis": "EDGAR_SECTOR_MEDIAN",
+        "n": 24
+      },
+      "return_on_capital_pct": {
+        "basis": "EDGAR_SECTOR_MEDIAN",
+        "n": 24
+      },
+      "revenue_growth_pct": {
+        "basis": "EDGAR_SECTOR_MEDIAN",
+        "n": 36
+      }
+    },
+    "_n": 36,
+    "debt_to_equity": 1.4764,
+    "gross_margin_pct": 14.8304,
+    "net_margin_pct": 7.4341,
+    "operating_margin_pct": 6.4041,
+    "return_on_capital_pct": 7.3855,
+    "revenue_growth_pct": 11.1194
+  },
+  "energy": {
+    "_basis": "EDGAR_SECTOR_MEDIAN",
+    "_meta": {
+      "debt_to_equity": {
+        "basis": "EDGAR_SECTOR_MEDIAN",
+        "n": 32
+      },
+      "net_margin_pct": {
+        "basis": "EDGAR_SECTOR_MEDIAN",
+        "n": 43
+      },
+      "operating_margin_pct": {
+        "basis": "EDGAR_SECTOR_MEDIAN",
+        "n": 39
+      },
+      "return_on_capital_pct": {
+        "basis": "EDGAR_SECTOR_MEDIAN",
+        "n": 39
+      },
+      "revenue_growth_pct": {
+        "basis": "EDGAR_SECTOR_MEDIAN",
+        "n": 44
+      }
+    },
+    "_n": 46,
+    "debt_to_equity": 0.8289,
+    "net_margin_pct": 7.3232,
+    "operating_margin_pct": 12.9956,
+    "return_on_capital_pct": 7.5832,
+    "revenue_growth_pct": -2.1281
+  },
+  "financials": {
+    "_basis": "EDGAR_SECTOR_MEDIAN",
+    "_meta": {
+      "debt_to_equity": {
+        "basis": "EDGAR_SECTOR_MEDIAN",
+        "n": 192
+      },
+      "net_margin_pct": {
+        "basis": "EDGAR_SECTOR_MEDIAN",
+        "n": 182
+      },
+      "operating_margin_pct": {
+        "basis": "EDGAR_SECTOR_MEDIAN",
+        "n": 69
+      },
+      "return_on_capital_pct": {
+        "basis": "EDGAR_SECTOR_MEDIAN",
+        "n": 71
+      },
+      "revenue_growth_pct": {
+        "basis": "EDGAR_SECTOR_MEDIAN",
+        "n": 197
+      }
+    },
+    "_n": 202,
+    "debt_to_equity": 3.5179,
+    "net_margin_pct": 12.2898,
+    "operating_margin_pct": 19.298,
+    "return_on_capital_pct": 5.4641,
+    "revenue_growth_pct": 10.7047
+  },
+  "healthcare": {
+    "_basis": "EDGAR_SECTOR_MEDIAN",
+    "_meta": {
+      "debt_to_equity": {
+        "basis": "EDGAR_SECTOR_MEDIAN",
+        "n": 25
+      },
+      "net_margin_pct": {
+        "basis": "EDGAR_SECTOR_MEDIAN",
+        "n": 32
+      },
+      "operating_margin_pct": {
+        "basis": "EDGAR_SECTOR_MEDIAN",
+        "n": 28
+      },
+      "return_on_capital_pct": {
+        "basis": "EDGAR_SECTOR_MEDIAN",
+        "n": 28
+      },
+      "revenue_growth_pct": {
+        "basis": "EDGAR_SECTOR_MEDIAN",
+        "n": 33
+      }
+    },
+    "_n": 33,
+    "debt_to_equity": 1.6271,
+    "net_margin_pct": 2.5367,
+    "operating_margin_pct": 4.7314,
+    "return_on_capital_pct": 4.6024,
+    "revenue_growth_pct": 10.2891
+  },
+  "manufacturing": {
+    "_basis": "EDGAR_SECTOR_MEDIAN",
+    "_meta": {
+      "debt_to_equity": {
+        "basis": "EDGAR_SECTOR_MEDIAN",
+        "n": 315
+      },
+      "gross_margin_pct": {
+        "basis": "EDGAR_SECTOR_MEDIAN",
+        "n": 338
+      },
+      "net_margin_pct": {
+        "basis": "EDGAR_SECTOR_MEDIAN",
+        "n": 460
+      },
+      "operating_margin_pct": {
+        "basis": "EDGAR_SECTOR_MEDIAN",
+        "n": 425
+      },
+      "return_on_capital_pct": {
+        "basis": "EDGAR_SECTOR_MEDIAN",
+        "n": 421
+      },
+      "revenue_growth_pct": {
+        "basis": "EDGAR_SECTOR_MEDIAN",
+        "n": 473
+      },
+      "rnd_intensity_pct": {
+        "basis": "EDGAR_SECTOR_MEDIAN",
+        "n": 333
+      }
+    },
+    "_n": 477,
+    "debt_to_equity": 1.3564,
+    "gross_margin_pct": 35.3116,
+    "net_margin_pct": 6.7574,
+    "operating_margin_pct": 10.1623,
+    "return_on_capital_pct": 7.9281,
+    "revenue_growth_pct": 0.7994,
+    "rnd_intensity_pct": 2.5327
+  },
+  "retail": {
+    "_basis": "EDGAR_SECTOR_MEDIAN",
+    "_meta": {
+      "debt_to_equity": {
+        "basis": "EDGAR_SECTOR_MEDIAN",
+        "n": 78
+      },
+      "gross_margin_pct": {
+        "basis": "EDGAR_SECTOR_MEDIAN",
+        "n": 72
+      },
+      "net_margin_pct": {
+        "basis": "EDGAR_SECTOR_MEDIAN",
+        "n": 121
+      },
+      "operating_margin_pct": {
+        "basis": "EDGAR_SECTOR_MEDIAN",
+        "n": 118
+      },
+      "return_on_capital_pct": {
+        "basis": "EDGAR_SECTOR_MEDIAN",
+        "n": 118
+      },
+      "revenue_growth_pct": {
+        "basis": "EDGAR_SECTOR_MEDIAN",
+        "n": 124
+      }
+    },
+    "_n": 125,
+    "debt_to_equity": 2.1833,
+    "gross_margin_pct": 33.6597,
+    "net_margin_pct": 2.7707,
+    "operating_margin_pct": 4.8695,
+    "return_on_capital_pct": 7.2261,
+    "revenue_growth_pct": 1.5762
+  },
+  "saas": {
+    "_basis": "EDGAR_SECTOR_MEDIAN",
+    "_meta": {
+      "debt_to_equity": {
+        "basis": "EDGAR_SECTOR_MEDIAN",
+        "n": 74
+      },
+      "gross_margin_pct": {
+        "basis": "EDGAR_SECTOR_MEDIAN",
+        "n": 56
+      },
+      "net_margin_pct": {
+        "basis": "EDGAR_SECTOR_MEDIAN",
+        "n": 94
+      },
+      "operating_margin_pct": {
+        "basis": "EDGAR_SECTOR_MEDIAN",
+        "n": 97
+      },
+      "return_on_capital_pct": {
+        "basis": "EDGAR_SECTOR_MEDIAN",
+        "n": 96
+      },
+      "revenue_growth_pct": {
+        "basis": "EDGAR_SECTOR_MEDIAN",
+        "n": 97
+      },
+      "rnd_intensity_pct": {
+        "basis": "EDGAR_SECTOR_MEDIAN",
+        "n": 78
+      }
+    },
+    "_n": 99,
+    "debt_to_equity": 1.0968,
+    "gross_margin_pct": 75.3752,
+    "net_margin_pct": 7.7107,
+    "operating_margin_pct": 10.8324,
+    "return_on_capital_pct": 6.1212,
+    "revenue_growth_pct": 9.7557,
+    "rnd_intensity_pct": 17.0446
+  },
+  "semiconductors": {
+    "_basis": "EDGAR_SECTOR_MEDIAN",
+    "_meta": {
+      "debt_to_equity": {
+        "basis": "EDGAR_SECTOR_MEDIAN",
+        "n": 22
+      },
+      "gross_margin_pct": {
+        "basis": "EDGAR_SECTOR_MEDIAN",
+        "n": 26
+      },
+      "net_margin_pct": {
+        "basis": "EDGAR_SECTOR_MEDIAN",
+        "n": 26
+      },
+      "operating_margin_pct": {
+        "basis": "EDGAR_SECTOR_MEDIAN",
+        "n": 26
+      },
+      "return_on_capital_pct": {
+        "basis": "EDGAR_SECTOR_MEDIAN",
+        "n": 26
+      },
+      "revenue_growth_pct": {
+        "basis": "EDGAR_SECTOR_MEDIAN",
+        "n": 27
+      },
+      "rnd_intensity_pct": {
+        "basis": "EDGAR_SECTOR_MEDIAN",
+        "n": 25
+      }
+    },
+    "_n": 27,
+    "debt_to_equity": 0.5634,
+    "gross_margin_pct": 44.7896,
+    "net_margin_pct": 12.9997,
+    "operating_margin_pct": 14.2888,
+    "return_on_capital_pct": 6.5437,
+    "revenue_growth_pct": 0.9448,
+    "rnd_intensity_pct": 15.1197
+  },
+  "services": {
+    "_basis": "EDGAR_SECTOR_MEDIAN",
+    "_meta": {
+      "debt_to_equity": {
+        "basis": "EDGAR_SECTOR_MEDIAN",
+        "n": 108
+      },
+      "gross_margin_pct": {
+        "basis": "EDGAR_SECTOR_MEDIAN",
+        "n": 43
+      },
+      "net_margin_pct": {
+        "basis": "EDGAR_SECTOR_MEDIAN",
+        "n": 147
+      },
+      "operating_margin_pct": {
+        "basis": "EDGAR_SECTOR_MEDIAN",
+        "n": 136
+      },
+      "return_on_capital_pct": {
+        "basis": "EDGAR_SECTOR_MEDIAN",
+        "n": 132
+      },
+      "revenue_growth_pct": {
+        "basis": "EDGAR_SECTOR_MEDIAN",
+        "n": 148
+      },
+      "rnd_intensity_pct": {
+        "basis": "EDGAR_SECTOR_MEDIAN",
+        "n": 31
+      }
+    },
+    "_n": 150,
+    "debt_to_equity": 1.9281,
+    "gross_margin_pct": 37.4303,
+    "net_margin_pct": 7.8049,
+    "operating_margin_pct": 11.449,
+    "return_on_capital_pct": 6.7794,
+    "revenue_growth_pct": 6.46,
+    "rnd_intensity_pct": 7.5006
+  },
+  "telecom": {
+    "_basis": "EDGAR_SECTOR_MEDIAN",
+    "_meta": {
+      "net_margin_pct": {
+        "basis": "EDGAR_SECTOR_MEDIAN",
+        "n": 32
+      },
+      "operating_margin_pct": {
+        "basis": "EDGAR_SECTOR_MEDIAN",
+        "n": 35
+      },
+      "return_on_capital_pct": {
+        "basis": "EDGAR_SECTOR_MEDIAN",
+        "n": 35
+      },
+      "revenue_growth_pct": {
+        "basis": "EDGAR_SECTOR_MEDIAN",
+        "n": 36
+      }
+    },
+    "_n": 36,
+    "net_margin_pct": 4.9217,
+    "operating_margin_pct": 6.0106,
+    "return_on_capital_pct": 2.2075,
+    "revenue_growth_pct": -0.7778
+  },
+  "transport": {
+    "_basis": "EDGAR_SECTOR_MEDIAN",
+    "_meta": {
+      "debt_to_equity": {
+        "basis": "EDGAR_SECTOR_MEDIAN",
+        "n": 21
+      },
+      "net_margin_pct": {
+        "basis": "EDGAR_SECTOR_MEDIAN",
+        "n": 49
+      },
+      "operating_margin_pct": {
+        "basis": "EDGAR_SECTOR_MEDIAN",
+        "n": 51
+      },
+      "return_on_capital_pct": {
+        "basis": "EDGAR_SECTOR_MEDIAN",
+        "n": 50
+      },
+      "revenue_growth_pct": {
+        "basis": "EDGAR_SECTOR_MEDIAN",
+        "n": 52
+      }
+    },
+    "_n": 53,
+    "debt_to_equity": 2.0765,
+    "net_margin_pct": 4.7944,
+    "operating_margin_pct": 9.0385,
+    "return_on_capital_pct": 6.8592,
+    "revenue_growth_pct": 3.5189
+  },
+  "utilities": {
+    "_basis": "EDGAR_SECTOR_MEDIAN",
+    "_meta": {
+      "debt_to_equity": {
+        "basis": "EDGAR_SECTOR_MEDIAN",
+        "n": 32
+      },
+      "net_margin_pct": {
+        "basis": "EDGAR_SECTOR_MEDIAN",
+        "n": 72
+      },
+      "operating_margin_pct": {
+        "basis": "EDGAR_SECTOR_MEDIAN",
+        "n": 80
+      },
+      "return_on_capital_pct": {
+        "basis": "EDGAR_SECTOR_MEDIAN",
+        "n": 80
+      },
+      "revenue_growth_pct": {
+        "basis": "EDGAR_SECTOR_MEDIAN",
+        "n": 79
+      }
+    },
+    "_n": 82,
+    "debt_to_equity": 2.9071,
+    "net_margin_pct": 13.8448,
+    "operating_margin_pct": 20.9816,
+    "return_on_capital_pct": 4.4379,
+    "revenue_growth_pct": 2.6419
+  },
+  "wholesale": {
+    "_basis": "EDGAR_SECTOR_MEDIAN",
+    "_meta": {
+      "debt_to_equity": {
+        "basis": "EDGAR_SECTOR_MEDIAN",
+        "n": 39
+      },
+      "gross_margin_pct": {
+        "basis": "EDGAR_SECTOR_MEDIAN",
+        "n": 51
+      },
+      "net_margin_pct": {
+        "basis": "EDGAR_SECTOR_MEDIAN",
+        "n": 55
+      },
+      "operating_margin_pct": {
+        "basis": "EDGAR_SECTOR_MEDIAN",
+        "n": 54
+      },
+      "return_on_capital_pct": {
+        "basis": "EDGAR_SECTOR_MEDIAN",
+        "n": 54
+      },
+      "revenue_growth_pct": {
+        "basis": "EDGAR_SECTOR_MEDIAN",
+        "n": 57
+      }
+    },
+    "_n": 57,
+    "debt_to_equity": 1.6449,
+    "gross_margin_pct": 25.6555,
+    "net_margin_pct": 2.0942,
+    "operating_margin_pct": 4.0151,
+    "return_on_capital_pct": 6.3022,
+    "revenue_growth_pct": -0.0107
+  }
+}

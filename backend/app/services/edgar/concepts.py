@@ -69,6 +69,13 @@ class MetricSpec:
     # Ratios are reported in percentage points; debt-to-equity is a bare
     # multiple and must not be scaled.
     scale: float = 100.0
+    # Balance-sheet concepts are INSTANTANEOUS in the frames API and live under
+    # a different period key: Assets for calendar 2024 is CY2024Q4I, not CY2024.
+    # Requesting an instant concept with a duration period returns 404, and a
+    # ratio built from it resolves zero companies - which is exactly what the
+    # first live build produced for return on capital and debt-to-equity.
+    numerator_instant: bool = False
+    denominator_instant: bool = False
     note: str = ""
     # Sanity bounds. A filer reporting a 40,000% operating margin has a unit
     # error or a near-zero denominator, and one such row moves a mean but not a
@@ -125,13 +132,17 @@ METRIC_SPECS: tuple[MetricSpec, ...] = (
         derivation=MetricDerivation.RATIO,
         numerator=OPERATING_INCOME_TAGS,
         denominator=ASSETS_TAGS,
+        denominator_instant=True,
         note=(
             "EBIT over total assets, not the textbook EBIT / (assets - current "
             "liabilities). LiabilitiesCurrent is materially less widely tagged "
             "than Assets, and the textbook denominator would have cost roughly a "
             "third of the coverage for a refinement smaller than the spread "
             "between filers. The deviation is stated rather than hidden, and the "
-            "resulting figure is systematically LOWER than a true ROCE."
+            "resulting figure is systematically LOWER than a true ROCE. The "
+            "denominator is the balance at period end (an instantaneous frame) "
+            "against a full-year numerator, which is the standard pairing: "
+            "same fiscal year, not a mismatched one."
         ),
         plausible_range=(-500.0, 200.0),
     ),
@@ -156,6 +167,8 @@ METRIC_SPECS: tuple[MetricSpec, ...] = (
         numerator=LIABILITIES_TAGS,
         denominator=EQUITY_TAGS,
         scale=1.0,
+        numerator_instant=True,
+        denominator_instant=True,
         note=(
             "Total liabilities over book equity: a solvency ratio, not a "
             "financial-debt ratio. Interest-bearing debt is tagged too "

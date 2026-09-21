@@ -14,6 +14,9 @@ ci.db
 
 # V3: EDGAR response cache and generated benchmark tables.
 # Cached SEC responses are reproducible from the API and would add tens of MB.
+# Cached SEC responses are reproducible from the API and would add tens of MB.
 data/edgar_cache/
+# Built tables are small, reproducible and useful, so the shipped one IS
+# committed; anything else you build locally is not.
 data/benchmarks/*.json
-!data/benchmarks/sample_*.json
+!data/benchmarks/edgar_CY2024.json

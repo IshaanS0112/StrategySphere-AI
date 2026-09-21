@@ -16,7 +16,7 @@ import pytest
 from app.enums import BenchmarkBasis
 from app.services import benchmarks as bench
 from app.services.edgar import sic as sic_mod
-from app.services.edgar.benchmark_builder import build_benchmark_table
+from app.services.edgar.benchmark_builder import build_benchmark_table, instant_period
 
 
 @pytest.fixture
@@ -78,7 +78,12 @@ class TestMinimumSampleRule:
 
     def test_a_sector_below_the_minimum_is_omitted_and_named(self, built):
         assert "financials" not in built.table
-        assert "financials" in built.provenance["sectors_below_min_n"]
+        entry = built.provenance["sectors_below_min_n"]["financials"]
+        # Membership and metric coverage are different numbers, and reporting
+        # only the first makes "biotech (20)" look like it should have cleared
+        # a minimum of 20 when no metric resolved that many.
+        assert entry["classified_members"] == 4
+        assert entry["best_metric_n"] <= entry["classified_members"]
 
     def test_an_omitted_sector_falls_through_to_the_all_filer_median(self, tmp_path, built):
         path = tmp_path / "table.json"
@@ -239,6 +244,37 @@ class TestProvenanceBlock:
             for key in row
         )
         assert all(isinstance(v, float) for row in table.rows.values() for v in row.values())
+
+
+class TestInstantaneousPeriods:
+    """Balance-sheet concepts live under a different period key than income ones.
+
+    The first live build of this table resolved ZERO companies for return on
+    capital and debt-to-equity, because Assets for calendar 2024 is CY2024Q4I
+    and CY2024 is a 404. Both are now pinned.
+    """
+
+    def test_a_calendar_year_maps_to_its_q4_instant(self):
+        assert instant_period("CY2024") == "CY2024Q4I"
+        assert instant_period("CY2024Q4I") == "CY2024Q4I"
+
+    def test_an_unparseable_period_raises_rather_than_guessing(self):
+        with pytest.raises(ValueError):
+            instant_period("last year")
+
+    def test_balance_sheet_legs_are_requested_with_the_instant_key(
+        self, edgar_client, recorded_transport
+    ):
+        build_benchmark_table(
+            edgar_client, period="CY2024", min_sector_n=10, sic_lookup_limit=0
+        )
+        assert any("/Assets/USD/CY2024Q4I.json" in url for url in recorded_transport.calls)
+        assert not any("/Assets/USD/CY2024.json" in url for url in recorded_transport.calls)
+
+    def test_both_balance_sheet_ratios_actually_resolve(self, built):
+        for metric in ("return_on_capital_pct", "debt_to_equity"):
+            assert built.provenance["coverage_by_metric"][metric]["resolved"] > 0, metric
+            assert built.table["_default"][metric] > 0, metric
 
 
 class TestDeterminismAndRequestDiscipline:

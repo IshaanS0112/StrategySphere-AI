@@ -113,7 +113,7 @@ class TestRateLimiting:
             clock=clock,
             sleep=sleep,
         )
-        for concept in ("GrossProfit", "Assets", "NetIncomeLoss", "Liabilities"):
+        for concept in ("GrossProfit", "Revenues", "NetIncomeLoss", "OperatingIncomeLoss"):
             client.frames(concept, period="CY2024")
         # Capacity 2, so two free and two waits of half a second each.
         assert client.stats.seconds_waiting == pytest.approx(1.0)

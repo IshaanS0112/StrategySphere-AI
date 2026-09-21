@@ -119,6 +119,28 @@ class _ConceptCache:
         return sum(len(resolved.frames) for resolved in self._store.values())
 
 
+def instant_period(period: str) -> str:
+    """Duration period -> the instantaneous key for the same period end.
+
+    The frames API splits its two kinds of fact into different period keys.
+    Income-statement concepts are durations and live under ``CY2024``;
+    balance-sheet concepts are instants and live under ``CY2024Q4I``, the
+    balance as at the period end. Requesting ``Assets`` for ``CY2024`` returns
+    404, and the first live build of this table duly resolved zero companies
+    for both ratios with a balance-sheet leg. The units and the fiscal year
+    still match across a ratio's legs - a full-year numerator over the balance
+    at the end of that same year is the standard pairing, not a mismatch.
+    """
+    body = period.removeprefix("CY")
+    if len(body) == 4 and body.isdigit():
+        return f"CY{body}Q4I"
+    if period.endswith("I"):
+        return period
+    raise ValueError(
+        f"cannot derive an instantaneous period key from {period!r}; expected CYyyyy"
+    )
+
+
 def _company_values_for_metric(
     spec: concept_mod.MetricSpec,
     cache: _ConceptCache,
@@ -166,8 +188,13 @@ def _company_values_for_metric(
         return values, coverage, tags
 
     # RATIO
-    numerator = cache.get(spec.numerator, unit="USD", period=period)
-    denominator = cache.get(spec.denominator, unit="USD", period=period)
+    instant = instant_period(period)
+    numerator = cache.get(
+        spec.numerator, unit="USD", period=instant if spec.numerator_instant else period
+    )
+    denominator = cache.get(
+        spec.denominator, unit="USD", period=instant if spec.denominator_instant else period
+    )
     universe = set(numerator.values) | set(denominator.values)
     for cik in universe:
         top = numerator.values.get(cik)
@@ -300,16 +327,18 @@ def build_benchmark_table(
             continue
         by_sector.setdefault(sector, []).append(cik)
 
-    sectors_below_min_n: dict[str, int] = {}
+    sectors_below_min_n: dict[str, dict[str, int]] = {}
     for sector, members in sorted(by_sector.items()):
         row: dict[str, Any] = {}
         meta: dict[str, Any] = {}
+        best_metric_n = 0
         for spec in specs:
             values = [
                 metric_values[spec.key][cik]
                 for cik in members
                 if cik in metric_values[spec.key]
             ]
+            best_metric_n = max(best_metric_n, len(values))
             if len(values) < min_sector_n:
                 continue
             row[spec.key] = round(float(median(values)), 4)
@@ -320,8 +349,13 @@ def build_benchmark_table(
         if not row:
             # Every metric in this sector fell short of min_sector_n. Publishing
             # an empty row would be indistinguishable from a sector that simply
-            # has no data, so record why it is absent instead.
-            sectors_below_min_n[sector] = len(members)
+            # has no data, so record why it is absent instead. Both numbers are
+            # kept: a sector can have 20 members and still publish nothing,
+            # because membership is not the same as resolving a metric.
+            sectors_below_min_n[sector] = {
+                "classified_members": len(members),
+                "best_metric_n": best_metric_n,
+            }
             continue
         row["_n"] = len(members)
         row["_basis"] = BenchmarkBasis.EDGAR_SECTOR_MEDIAN.value
@@ -358,6 +392,19 @@ def build_benchmark_table(
             **sic_stats,
         },
         "metrics_not_derivable": concept_mod.NOT_DERIVABLE,
+        "how_to_read_the_default_row": (
+            "The _default row is the median across EVERY filer that resolved the "
+            "metric, which is a very different population from a sector: it "
+            "includes pre-revenue, shell and micro-cap registrants in numbers "
+            "that a sector median of large filers does not. That is why the "
+            "all-filer net margin sits near zero and the all-filer return on "
+            "capital is negative - the median SEC registrant is roughly "
+            "breakeven, which is true and surprising rather than a defect. A "
+            "company benchmarked against _default will therefore look stronger "
+            "than one benchmarked against its own sector. Supplying competitor "
+            "financials, so the engine uses a peer-set median, remains the "
+            "intended path and overrides this table entirely."
+        ),
         "derivation_notes": {
             spec.key: spec.note for spec in specs if spec.note
         },

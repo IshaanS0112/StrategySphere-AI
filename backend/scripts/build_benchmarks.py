@@ -106,7 +106,9 @@ def main() -> int:
         say(
             f"  below min n={args.min_sector_n}     : "
             + ", ".join(
-                f"{sector} ({n})" for sector, n in provenance["sectors_below_min_n"].items()
+                f"{sector} ({entry['classified_members']} members, "
+                f"best metric n={entry['best_metric_n']})"
+                for sector, entry in provenance["sectors_below_min_n"].items()
             )
         )
     say("  coverage:")

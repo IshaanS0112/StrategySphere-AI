@@ -24,9 +24,15 @@ services:
       DATABASE_URL: postgresql+psycopg2://strategy:strategy@db:5432/strategysphere
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       CORS_ORIGINS: http://localhost:5173,http://localhost:3000
-      # Point at your own sourced benchmark table if you have one; the shipped
-      # default is illustrative placeholders.
-      INDUSTRY_BENCHMARKS_PATH: ${INDUSTRY_BENCHMARKS_PATH:-}
+      # V3 ships a real table: sector medians built from SEC XBRL filings,
+      # committed at data/benchmarks/ and mounted read-only below. Point this
+      # at your own if you have one; set it empty to fall back to V1's
+      # illustrative placeholder bands.
+      INDUSTRY_BENCHMARKS_PATH: ${INDUSTRY_BENCHMARKS_PATH:-data/benchmarks/edgar_CY2024.json}
+      # Only needed to REBUILD the table. The SEC requires a declared
+      # User-Agent with contact details; there is no default and the client
+      # refuses to construct without one.
+      EDGAR_USER_AGENT: ${EDGAR_USER_AGENT:-}
     ports:
       - "8000:8000"
     volumes:
