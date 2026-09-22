@@ -51,7 +51,7 @@ export default function PricingView({ result }: { result: PricingRecommendation 
               style={{ left: `calc(${position * 100}% - 6px)` }}
             />
           </div>
-          <div className="mt-1.5 flex justify-between font-mono text-xs text-slate-500">
+          <div className="mt-1.5 flex justify-between num text-xs text-slate-500">
             <span>{money(band.min)}</span>
             <span>{money(band.max)}</span>
           </div>
@@ -86,10 +86,10 @@ export default function PricingView({ result }: { result: PricingRecommendation 
       )}
 
       <details className="panel p-4">
-        <summary className="cursor-pointer text-xs font-semibold uppercase tracking-wider text-slate-400">
+        <summary className="label mb-0 cursor-pointer">
           Derivation
         </summary>
-        <ol className="mt-3 space-y-1.5 font-mono text-xs text-slate-400">
+        <ol className="mt-3 space-y-1.5 num text-xs text-slate-400">
           {steps.map((step, index) => (
             <li key={index}>
               <span className="mr-2 text-slate-600">{index + 1}.</span>

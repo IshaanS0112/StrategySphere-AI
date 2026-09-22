@@ -50,7 +50,7 @@ function TornadoRow({ axis, scale }: { axis: AxisSensitivity; scale: number }) {
     <div className="py-2.5">
       <div className="flex items-baseline justify-between gap-3">
         <span className="text-xs text-slate-300">{AXIS_LABEL[axis.axis] ?? axis.axis}</span>
-        <span className="font-mono text-xs text-slate-500">
+        <span className="num text-xs text-slate-500">
           now {axis.current_value.toFixed(2)}
           {reachable && (
             <>
@@ -74,13 +74,13 @@ function TornadoRow({ axis, scale }: { axis: AxisSensitivity; scale: number }) {
             }
           />
         ) : (
-          <span className="absolute left-1/2 top-0 -translate-x-1/2 text-[10px] text-slate-600">
+          <span className="absolute left-1/2 top-0 -translate-x-1/2 text-2xs text-slate-600">
             unreachable
           </span>
         )}
       </div>
 
-      <p className="mt-1 text-[11px] leading-relaxed text-slate-500">{axis.note}</p>
+      <p className="mt-1 text-2xs leading-relaxed text-slate-500">{axis.note}</p>
     </div>
   );
 }
@@ -100,7 +100,7 @@ export default function SensitivityPanel({ result }: { result: Sensitivity }) {
             <span className="label">Robustness of the placement</span>
             <span className={`chip ${VERDICT_STYLE[result.verdict]}`}>{result.verdict}</span>
           </div>
-          <span className="font-mono text-xs text-slate-500">
+          <span className="num text-xs text-slate-500">
             {result.baseline_quadrant.replace(/_/g, " ")} · A{" "}
             {result.baseline_attractiveness.toFixed(2)} · S{" "}
             {result.baseline_strength.toFixed(2)}
@@ -135,14 +135,14 @@ export default function SensitivityPanel({ result }: { result: Sensitivity }) {
       </div>
 
       <div className="panel p-4">
-        <h4 className="mb-1 text-xs font-semibold uppercase tracking-wider text-slate-400">
+        <h4 className="label">
           Attractiveness axes
         </h4>
-        <p className="mb-2 text-[11px] text-slate-600">
+        <p className="mb-2 text-2xs text-slate-600">
           Minimum move on each 1–5 axis that changes the quadrant. Solved exactly, not
           searched: the score is linear in its axes, so the derivative is the weight.
         </p>
-        <div className="divide-y divide-edge/50">
+        <div className="divide-y divide-edge/40">
           {result.axes.map((axis) => (
             <TornadoRow key={axis.axis} axis={axis} scale={scale} />
           ))}
@@ -151,7 +151,7 @@ export default function SensitivityPanel({ result }: { result: Sensitivity }) {
 
       {result.strength_sensitivity && (
         <div className="panel p-4">
-          <h4 className="mb-2 text-xs font-semibold uppercase tracking-wider text-slate-400">
+          <h4 className="label">
             Competitive strength axis
           </h4>
           <TornadoRow axis={result.strength_sensitivity} scale={scale} />
@@ -159,13 +159,13 @@ export default function SensitivityPanel({ result }: { result: Sensitivity }) {
       )}
 
       <details className="panel p-4">
-        <summary className="cursor-pointer text-xs font-semibold uppercase tracking-wider text-slate-400">
+        <summary className="label mb-0 cursor-pointer">
           Method
         </summary>
         <p className="mt-2 text-xs leading-relaxed text-slate-400">
           {result.calculation_basis?.method}
         </p>
-        <p className="mt-2 font-mono text-xs text-accent">
+        <p className="mt-2 num text-xs text-accent">
           {result.calculation_basis?.formula}
         </p>
         <p className="mt-2 text-xs leading-relaxed text-slate-500">

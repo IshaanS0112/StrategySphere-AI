@@ -1,33 +1,175 @@
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap");
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 @layer base {
+  html {
+    /* cv11 gives Inter the single-storey 'a'/'l' that stay legible at 11px,
+       ss01 tightens the punctuation. Both matter at this density. */
+    font-feature-settings: "cv11", "ss01";
+    -webkit-font-smoothing: antialiased;
+  }
+
   body {
     @apply bg-ink text-slate-200 antialiased;
+    /* A very slow radial wash so the page has a light source rather than
+       being a flat black rectangle. Fixed, so it does not scroll away. */
+    background-image:
+      radial-gradient(1100px 600px at 15% -10%, rgba(240, 180, 41, 0.05), transparent 60%),
+      radial-gradient(900px 500px at 90% 0%, rgba(96, 165, 250, 0.045), transparent 55%);
+    background-attachment: fixed;
+  }
+
+  /* Every figure in this application is meant to be compared down a column.
+     Proportional digits make that comparison jitter. */
+  .font-mono,
+  code,
+  kbd,
+  samp {
+    font-variant-numeric: tabular-nums;
+  }
+
+  ::selection {
+    @apply bg-accent/25 text-slate-50;
+  }
+
+  :focus-visible {
+    @apply outline-none ring-2 ring-accent/60 ring-offset-2 ring-offset-ink;
+  }
+
+  /* Dark scrollbars. A default light scrollbar on a near-black page is the
+     single most obvious "unstyled" tell. */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: #2c3a52 transparent;
+  }
+  *::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  *::-webkit-scrollbar-thumb {
+    @apply rounded-full border-4 border-solid border-transparent bg-edge-strong bg-clip-content;
+  }
+  *::-webkit-scrollbar-thumb:hover {
+    background-color: #3b4c6b;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+    }
   }
 }
 
 @layer components {
+  /* --- surfaces ------------------------------------------------------- */
   .panel {
-    @apply rounded-lg border border-edge bg-panel;
+    @apply relative rounded-xl border border-edge bg-panel bg-panel-sheen shadow-panel;
   }
+  .panel-2 {
+    @apply rounded-lg border border-edge/70 bg-panel-2;
+  }
+  .panel-inset {
+    @apply rounded-lg border border-edge/60 bg-ink/60;
+  }
+  /* Interactive cards: the lift is a border and background change, never a
+     transform, so nothing around them shifts on hover. */
+  .card-interactive {
+    @apply transition-colors duration-200 hover:border-accent/40 hover:bg-panel-2;
+  }
+
+  /* --- typography ------------------------------------------------------ */
+  .label {
+    @apply mb-1 block text-2xs font-semibold uppercase tracking-label text-slate-500;
+  }
+  .section-title {
+    @apply text-sm font-semibold tracking-tight text-slate-100;
+  }
+  .eyebrow {
+    @apply text-2xs font-semibold uppercase tracking-label text-slate-500;
+  }
+  .prose-muted {
+    @apply text-xs leading-relaxed text-slate-400;
+  }
+  .stat-value {
+    @apply font-mono text-2xl font-semibold tracking-tight text-slate-50;
+  }
+
+  /* --- controls -------------------------------------------------------- */
   .btn {
-    @apply rounded-md px-4 py-2 text-sm font-medium transition disabled:cursor-not-allowed disabled:opacity-40;
+    @apply inline-flex cursor-pointer items-center justify-center gap-1.5 rounded-lg px-3.5 py-2
+           text-xs font-semibold tracking-tight transition-all duration-200
+           disabled:cursor-not-allowed disabled:opacity-40;
   }
   .btn-primary {
-    @apply btn bg-accent text-ink hover:bg-amber-300;
+    @apply btn bg-accent-fill text-ink shadow-[0_1px_0_rgba(255,255,255,0.25)_inset,0_2px_8px_-2px_rgba(240,180,41,0.5)]
+           hover:brightness-110 active:brightness-95;
   }
   .btn-ghost {
-    @apply btn border border-edge text-slate-300 hover:border-accent hover:text-accent;
+    @apply btn border border-edge bg-panel-2/60 text-slate-300
+           hover:border-edge-strong hover:bg-panel-3 hover:text-slate-100;
+  }
+  .btn-danger {
+    @apply btn border border-transparent text-slate-500
+           hover:border-negative/40 hover:bg-negative/10 hover:text-negative;
   }
   .field {
-    @apply w-full rounded-md border border-edge bg-ink px-3 py-2 text-sm outline-none focus:border-accent;
+    @apply w-full rounded-lg border border-edge bg-ink/70 px-3 py-2 text-sm text-slate-100
+           placeholder:text-slate-600 transition-colors duration-200
+           hover:border-edge-strong focus:border-accent/70 focus:outline-none
+           focus:ring-2 focus:ring-accent/20;
   }
-  .label {
-    @apply mb-1 block text-xs uppercase tracking-wider text-slate-400;
-  }
+
+  /* --- chips ----------------------------------------------------------- */
   .chip {
-    @apply inline-flex items-center rounded border px-2 py-0.5 text-[11px] font-medium uppercase tracking-wider;
+    @apply inline-flex items-center gap-1 rounded-md border px-1.5 py-0.5
+           text-2xs font-semibold uppercase tracking-label;
+  }
+  .chip-positive {
+    @apply border-positive/30 bg-positive/10 text-positive;
+  }
+  .chip-caution {
+    @apply border-caution/30 bg-caution/10 text-caution;
+  }
+  .chip-negative {
+    @apply border-negative/30 bg-negative/10 text-negative;
+  }
+  .chip-neutral {
+    @apply border-edge-strong bg-panel-3 text-slate-400;
+  }
+  .chip-accent {
+    @apply border-accent/35 bg-accent/10 text-accent;
+  }
+
+  /* --- data tables ----------------------------------------------------- */
+  .data-table {
+    @apply w-full text-left text-xs;
+  }
+  .data-table thead th {
+    @apply whitespace-nowrap border-b border-edge pb-2 text-2xs font-semibold
+           uppercase tracking-label text-slate-500;
+  }
+  .data-table tbody tr {
+    @apply border-b border-edge/40 transition-colors duration-150 last:border-0 hover:bg-panel-2/60;
+  }
+  .data-table tbody td {
+    @apply py-2 align-top;
+  }
+  .num {
+    @apply font-mono tabular-nums;
+  }
+
+  /* --- meters ---------------------------------------------------------- */
+  .meter {
+    @apply h-1.5 w-full overflow-hidden rounded-full bg-ink ring-1 ring-inset ring-edge/70;
+  }
+  .meter-fill {
+    @apply h-full rounded-full transition-[width] duration-500 ease-out;
   }
 }

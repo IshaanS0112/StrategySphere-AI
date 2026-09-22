@@ -30,7 +30,7 @@ export default function ReportView({ report }: { report: StrategyReport }) {
           {isFallback ? "template fallback" : "LLM narrated"}
         </span>
         {narrative.dropped_citations ? (
-          <span className="chip border-negative/40 text-negative">
+          <span className="chip chip-negative">
             {narrative.dropped_citations} unsupported citation(s) dropped
           </span>
         ) : null}
@@ -88,7 +88,7 @@ export default function ReportView({ report }: { report: StrategyReport }) {
           {showContext ? "Hide" : "Show"} structured context (pre-LLM)
         </button>
         {showContext && (
-          <pre className="panel mt-2 max-h-96 overflow-auto p-4 font-mono text-[11px] leading-relaxed text-slate-400">
+          <pre className="panel mt-2 max-h-96 overflow-auto p-4 num text-2xs leading-relaxed text-slate-400">
             {JSON.stringify(report.structured_context, null, 2)}
           </pre>
         )}

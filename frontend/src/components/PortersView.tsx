@@ -41,7 +41,7 @@ function ForceBar({ score }: { score: number | null }) {
       <div className="h-1.5 w-24 rounded-full bg-edge">
         <div className={`h-1.5 rounded-full ${tone}`} style={{ width: `${pct}%` }} />
       </div>
-      <span className="font-mono text-xs text-slate-300">{score.toFixed(2)}</span>
+      <span className="num text-xs text-slate-300">{score.toFixed(2)}</span>
     </div>
   );
 }

@@ -152,14 +152,14 @@ export default function TimelineView() {
 
         <div className="space-y-3">
           <div className="panel p-4">
-            <h4 className="mb-2 text-xs font-semibold uppercase tracking-wider text-slate-400">
+            <h4 className="label">
               Trend
             </h4>
             <div className="flex items-baseline justify-between border-t border-edge/60 py-1.5">
               <span className="text-xs text-slate-400">Market attractiveness</span>
               <span className={`text-sm ${TREND_TONE[timeline.attractiveness_trend]}`}>
                 {timeline.attractiveness_trend.replace(/_/g, " ").toLowerCase()}{" "}
-                <span className="font-mono text-xs text-slate-500">
+                <span className="num text-xs text-slate-500">
                   {basis.attractiveness_delta > 0 ? "+" : ""}
                   {basis.attractiveness_delta}
                 </span>
@@ -169,13 +169,13 @@ export default function TimelineView() {
               <span className="text-xs text-slate-400">Competitive strength</span>
               <span className={`text-sm ${TREND_TONE[timeline.strength_trend]}`}>
                 {timeline.strength_trend.replace(/_/g, " ").toLowerCase()}{" "}
-                <span className="font-mono text-xs text-slate-500">
+                <span className="num text-xs text-slate-500">
                   {basis.strength_delta > 0 ? "+" : ""}
                   {basis.strength_delta}
                 </span>
               </span>
             </div>
-            <p className="mt-2 text-[11px] leading-relaxed text-slate-600">
+            <p className="mt-2 text-2xs leading-relaxed text-slate-600">
               Moves smaller than {basis.material_delta_threshold} on a 1–5 axis are
               reported as stable rather than as a trend.
             </p>
@@ -183,7 +183,7 @@ export default function TimelineView() {
 
           {timeline.quadrant_changes.length > 0 && (
             <div className="panel p-4">
-              <h4 className="mb-2 text-xs font-semibold uppercase tracking-wider text-slate-400">
+              <h4 className="label">
                 Quadrant changes
               </h4>
               {timeline.quadrant_changes.map((change, i) => (

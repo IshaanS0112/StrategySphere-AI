@@ -23,9 +23,9 @@ import type { ThreePoint, UncertaintyAnalysis } from "../api/types";
 const MAX_ENTROPY = 1.584962500721156;
 
 const STABILITY_STYLE: Record<string, string> = {
-  DECISIVE: "border-positive/40 text-positive",
-  LEANING: "border-caution/40 text-caution",
-  CONTESTED: "border-negative/40 text-negative",
+  DECISIVE: "chip-positive",
+  LEANING: "chip-caution",
+  CONTESTED: "chip-negative",
 };
 
 const STABILITY_COPY: Record<string, string> = {
@@ -35,9 +35,9 @@ const STABILITY_COPY: Record<string, string> = {
 };
 
 const QUADRANT_TONE: Record<string, string> = {
-  INVEST_GROW: "bg-positive/70",
-  SELECTIVE_INVEST: "bg-caution/70",
-  HARVEST_DIVEST: "bg-negative/70",
+  INVEST_GROW: "bg-positive",
+  SELECTIVE_INVEST: "bg-caution",
+  HARVEST_DIVEST: "bg-negative",
 };
 
 const INPUT_LABEL: Record<string, string> = {
@@ -53,14 +53,14 @@ function ProbabilityBar({ quadrant, value }: { quadrant: string; value: number }
     <div className="py-1.5">
       <div className="flex items-baseline justify-between gap-3">
         <span className="text-xs text-slate-300">{quadrant.replace(/_/g, " ")}</span>
-        <span className="font-mono text-xs text-slate-400">
+        <span className="num text-xs font-semibold text-slate-200">
           {(value * 100).toFixed(1)}%
         </span>
       </div>
-      <div className="mt-1 h-2 w-full rounded-sm bg-ink">
+      <div className="meter mt-1.5">
         <div
-          className={`h-2 rounded-sm ${QUADRANT_TONE[quadrant] ?? "bg-slate-600"}`}
-          style={{ width: `${Math.max(value * 100, value > 0 ? 1 : 0)}%` }}
+          className={`meter-fill ${QUADRANT_TONE[quadrant] ?? "bg-slate-600"}`}
+          style={{ width: `${Math.max(value * 100, value > 0 ? 1.5 : 0)}%` }}
         />
       </div>
     </div>
@@ -77,18 +77,24 @@ function Interval({ label, interval }: { label: string; interval: number[] }) {
     <div className="py-2">
       <div className="flex items-baseline justify-between gap-3">
         <span className="text-xs text-slate-300">{label}</span>
-        <span className="font-mono text-xs text-slate-400">
+        <span className="num text-xs font-semibold text-slate-200">
           {low.toFixed(2)} – {high.toFixed(2)}
         </span>
       </div>
-      <div className="relative mt-1.5 h-3">
-        <div className="absolute top-1 h-1 w-full rounded-sm bg-ink" />
+      <div className="relative mt-2 h-3">
+        <div className="absolute top-1 h-1 w-full rounded-full bg-ink ring-1 ring-inset ring-edge/70" />
         <div
-          className="absolute top-1 h-1 rounded-sm bg-accent/60"
+          className="absolute top-1 h-1 rounded-full bg-accent"
           style={{ left: `${left}%`, width: `${width}%` }}
         />
+        {/* End caps, so a very narrow interval is still visible as a range. */}
+        <div className="absolute top-0 h-3 w-px bg-accent/70" style={{ left: `${left}%` }} />
+        <div
+          className="absolute top-0 h-3 w-px bg-accent/70"
+          style={{ left: `calc(${left + width}% - 1px)` }}
+        />
       </div>
-      <div className="mt-0.5 flex justify-between text-[10px] text-slate-600">
+      <div className="mt-1 flex justify-between text-2xs text-slate-700">
         <span>1</span>
         <span>5</span>
       </div>
@@ -153,7 +159,7 @@ export default function UncertaintyPanel({ result, busy, onRun }: UncertaintyPan
                   </span>
                 </span>
                 <button
-                  className="text-[11px] text-slate-600 hover:text-negative"
+                  className="text-2xs text-slate-600 hover:text-negative"
                   onClick={() => setStaged((prev) => {
                     const next = { ...prev };
                     delete next[name];
@@ -175,7 +181,7 @@ export default function UncertaintyPanel({ result, busy, onRun }: UncertaintyPan
           >
             {busy ? "Sampling…" : "Run Monte Carlo"}
           </button>
-          <span className="text-[11px] text-slate-600">
+          <span className="text-2xs text-slate-600">
             Inputs you do not state are held fixed, so the spread is a lower bound on
             the real uncertainty.
           </span>
@@ -190,10 +196,10 @@ export default function UncertaintyPanel({ result, busy, onRun }: UncertaintyPan
             <div className="flex flex-wrap items-start justify-between gap-4">
               <div>
                 <span className="label">Point verdict</span>
-                <p className="text-lg font-semibold text-slate-100">
+                <p className="text-xl font-semibold tracking-tight text-slate-50">
                   {result.point_quadrant.replace(/_/g, " ")}
                 </p>
-                <p className="mt-0.5 text-[11px] text-slate-500">
+                <p className="mt-1 text-2xs text-slate-600">
                   Still the headline. The distribution below sits beside it.
                 </p>
               </div>
@@ -202,17 +208,25 @@ export default function UncertaintyPanel({ result, busy, onRun }: UncertaintyPan
                 <span className={`chip ${STABILITY_STYLE[result.verdict_stability]}`}>
                   {result.verdict_stability}
                 </span>
-                <p className="mt-1 font-mono text-xs text-slate-400">
+                <p className="num mt-1.5 text-xs text-slate-400">
                   entropy {result.entropy_bits.toFixed(3)} / {MAX_ENTROPY.toFixed(3)} bits
                 </p>
               </div>
             </div>
 
-            <div className="mt-3 h-1.5 w-full rounded-sm bg-ink">
-              <div
-                className="h-1.5 rounded-sm bg-slate-400"
-                style={{ width: `${entropyPct}%` }}
-              />
+            {/* Entropy as a share of its own maximum, log2(3). The three band
+                edges are ticked, so the chip is not the only signal. */}
+            <div className="relative mt-4">
+              <div className="meter">
+                <div
+                  className="meter-fill bg-gradient-to-r from-positive via-caution to-negative"
+                  style={{ width: `${Math.max(entropyPct, 1.5)}%` }}
+                />
+              </div>
+              <div className="mt-1 flex justify-between text-2xs text-slate-700">
+                <span>0 · certain</span>
+                <span>{MAX_ENTROPY.toFixed(2)} · coin flip</span>
+              </div>
             </div>
             <p className="mt-2 text-xs leading-relaxed text-slate-400">
               {STABILITY_COPY[result.verdict_stability]}
@@ -232,8 +246,9 @@ export default function UncertaintyPanel({ result, busy, onRun }: UncertaintyPan
           </div>
 
           <div className="panel p-4">
-            <h4 className="mb-2 text-xs font-semibold uppercase tracking-wider text-slate-400">
-              Quadrant probabilities · {result.draws.toLocaleString()} draws · seed {result.seed}
+            <h4 className="label">
+              Quadrant probabilities · {result.draws.toLocaleString()} draws · seed{" "}
+              {result.seed}
             </h4>
             {Object.entries(result.quadrant_probabilities).map(([quadrant, value]) => (
               <ProbabilityBar key={quadrant} quadrant={quadrant} value={value} />
@@ -241,10 +256,8 @@ export default function UncertaintyPanel({ result, busy, onRun }: UncertaintyPan
           </div>
 
           <div className="panel p-4">
-            <h4 className="mb-1 text-xs font-semibold uppercase tracking-wider text-slate-400">
-              90% credible intervals
-            </h4>
-            <p className="mb-1 text-[11px] text-slate-600">
+            <h4 className="label">90% credible intervals</h4>
+            <p className="mb-1 text-2xs text-slate-600">
               Empirical percentiles of the draws, drawn on the fixed 1–5 axis rather
               than rescaled to themselves, so a wide band looks wide.
             </p>
@@ -253,8 +266,8 @@ export default function UncertaintyPanel({ result, busy, onRun }: UncertaintyPan
           </div>
 
           {analystWarning && (
-            <div className="panel border-caution/40 p-4">
-              <h4 className="mb-1 text-xs font-semibold uppercase tracking-wider text-caution">
+            <div className="panel border-caution/40 bg-caution/[0.04] p-4">
+              <h4 className="label text-caution">
                 These probabilities are conditional on ranges you typed
               </h4>
               <p className="text-xs leading-relaxed text-slate-400">{analystWarning}</p>
@@ -262,13 +275,13 @@ export default function UncertaintyPanel({ result, busy, onRun }: UncertaintyPan
           )}
 
           <details className="panel p-4">
-            <summary className="cursor-pointer text-xs font-semibold uppercase tracking-wider text-slate-400">
+            <summary className="label mb-0 cursor-pointer">
               Method, and how this differs from sensitivity
             </summary>
             <p className="mt-2 text-xs leading-relaxed text-slate-400">
               {basis.versus_sensitivity_analysis}
             </p>
-            <p className="mt-2 font-mono text-[11px] text-accent">
+            <p className="mt-2 num text-2xs text-accent">
               {basis.distribution_formula}
             </p>
             <p className="mt-2 text-xs leading-relaxed text-slate-500">

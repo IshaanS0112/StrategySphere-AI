@@ -41,7 +41,7 @@ function DeltaRow({
   return (
     <div className="flex items-baseline justify-between gap-3 py-1">
       <span className="text-xs text-slate-400">{field.replace(/_/g, " ")}</span>
-      <span className="font-mono text-xs">
+      <span className="num text-xs">
         <span className="text-slate-500">{String(entry.baseline)}</span>
         <span className="mx-1.5 text-slate-600">→</span>
         <span className="text-slate-200">{String(entry.scenario)}</span>
@@ -228,7 +228,7 @@ export default function ScenarioPanel({ scenarios, busy, onCreate, onDelete }: P
               </p>
 
               {Object.keys(scenario.delta).length > 0 ? (
-                <div className="mt-3 divide-y divide-edge/50 border-t border-edge pt-2">
+                <div className="mt-3 divide-y divide-edge/40 border-t border-edge pt-2">
                   {Object.entries(scenario.delta).map(([field, entry]) => (
                     <DeltaRow key={field} field={field} entry={entry} />
                   ))}
@@ -254,7 +254,7 @@ export default function ScenarioPanel({ scenarios, busy, onCreate, onDelete }: P
                 <summary className="cursor-pointer text-xs text-slate-500">
                   Overrides applied
                 </summary>
-                <pre className="mt-2 overflow-auto rounded bg-ink p-3 font-mono text-[11px] text-slate-400">
+                <pre className="mt-2 overflow-auto rounded bg-ink p-3 num text-2xs text-slate-400">
                   {JSON.stringify(scenario.overrides, null, 2)}
                 </pre>
               </details>

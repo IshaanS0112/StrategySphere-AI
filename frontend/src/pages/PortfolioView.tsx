@@ -109,7 +109,7 @@ function Builder({ onCreated }: { onCreated: (portfolio: Portfolio) => void }) {
               <th className="p-2 font-normal">Floor</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-edge/50">
+          <tbody className="divide-y divide-edge/40">
             {companies.map((company) => {
               const draft = drafts[company.id];
               return (
@@ -123,7 +123,7 @@ function Builder({ onCreated }: { onCreated: (portfolio: Portfolio) => void }) {
                       />
                       <span className="text-slate-200">{company.name}</span>
                       {company.period_label && (
-                        <span className="text-[10px] text-slate-600">
+                        <span className="text-2xs text-slate-600">
                           {company.period_label}
                         </span>
                       )}
@@ -156,7 +156,7 @@ function Builder({ onCreated }: { onCreated: (portfolio: Portfolio) => void }) {
         {busy ? "Creating…" : `Create portfolio (${selected} units)`}
       </button>
       {selected === 1 && (
-        <span className="ml-2 text-[11px] text-slate-600">Select at least two units.</span>
+        <span className="ml-2 text-2xs text-slate-600">Select at least two units.</span>
       )}
     </div>
   );
@@ -245,8 +245,9 @@ export default function PortfolioView() {
           <button className="btn-primary" disabled={busy || !active} onClick={() => void allocate()}>
             {busy ? "Allocating…" : "Allocate"}
           </button>
-          <span className="text-[11px] text-slate-600">
-            {runs.length} stored run(s). A blank budget uses the portfolio's own.
+          <span className="text-2xs text-slate-600">
+            {runs.length === 1 ? "1 stored run" : `${runs.length} stored runs`}. A blank
+            budget uses the portfolio&rsquo;s own.
           </span>
         </div>
       )}
