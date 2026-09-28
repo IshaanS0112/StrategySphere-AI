@@ -222,3 +222,23 @@ def edgar_client(tmp_path, recorded_transport):
     )
     client.test_clock = now      # type: ignore[attr-defined]
     return client
+
+
+@pytest.fixture
+def db_session():
+    """A real session against a fresh schema, plus the engine for query counting.
+
+    Separate from the ``client`` fixture because these tests are about SQL, not
+    HTTP, and driving them through the API would mean the assertions counted
+    the framework's queries as well as the ones under test.
+    """
+    from app.db.session import Base, SessionLocal, engine
+
+    Base.metadata.drop_all(bind=engine)
+    Base.metadata.create_all(bind=engine)
+    session = SessionLocal()
+    try:
+        yield session, engine
+    finally:
+        session.close()
+        Base.metadata.drop_all(bind=engine)

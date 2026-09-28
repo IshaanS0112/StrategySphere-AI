@@ -8,9 +8,11 @@ consistent with what the dashboard is already showing. Ordering violations are
 
 from __future__ import annotations
 
-from fastapi import APIRouter, HTTPException, Path, status
+from fastapi import APIRouter, Path, status
 from sqlalchemy import select
 
+from app import errors
+from app.db import queries
 from app.models import Company
 from app.routers.deps import AppSettings, CurrentCompany, DbSession
 from app.schemas import (
@@ -43,25 +45,24 @@ def create_porters_analysis(company: CurrentCompany, db: DbSession, settings: Ap
     not the firm's position within it, so it needs no upstream stage.
     """
     if not (company.market_data or company.financial_data or company.competitors):
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail=(
-                "No market data, financial data, or competitors supplied. All five "
-                "forces would come back UNAVAILABLE, which is an honest output but "
-                "not a useful one."
-            ),
+        raise errors.AppError(
+            errors.INSUFFICIENT_INPUT,
+            "No market data, financial data, or competitors supplied. All five "
+            "forces would come back UNAVAILABLE, which is an honest output but "
+            "not a useful one.",
         )
     return analysis_pipeline.run_porters(db, company, settings)
 
 
 @router.get("/companies/{company_id}/porters-analysis", response_model=PortersAnalysisOut)
-def get_porters_analysis(company: CurrentCompany):
-    if not company.porters_analyses:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="No Porter's Five Forces analysis has been run for this company yet.",
+def get_porters_analysis(company: CurrentCompany, db: DbSession):
+    row = queries.latest_porters(db, company.id)
+    if row is None:
+        raise errors.AppError(
+            errors.NOT_FOUND,
+            "No Porter's Five Forces analysis has been run for this company yet.",
         )
-    return company.porters_analyses[-1]
+    return row
 
 
 # --------------------------------------------------------------------------
@@ -69,15 +70,15 @@ def get_porters_analysis(company: CurrentCompany):
 # --------------------------------------------------------------------------
 
 @router.get("/companies/{company_id}/sensitivity")
-def get_sensitivity(company: CurrentCompany, settings: AppSettings):
+def get_sensitivity(company: CurrentCompany, db: DbSession, settings: AppSettings):
     """Exact minimum single-input change that would flip the quadrant.
 
     A GET rather than a POST: it derives from the stored matrix result and
     persists nothing, so it is safely repeatable and cacheable.
     """
-    if not company.attractiveness_results:
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=_NEEDS_MATRIX)
-    return analysis_pipeline.compute_sensitivity(company, settings)
+    if queries.latest_matrix(db, company.id) is None:
+        raise errors.stage_order(_NEEDS_MATRIX, needs="matrix")
+    return analysis_pipeline.compute_sensitivity(db, company, settings)
 
 
 # --------------------------------------------------------------------------
@@ -96,8 +97,8 @@ def create_scenario(
     settings: AppSettings,
 ):
     """Recompute under overrides and store the delta from the current baseline."""
-    if not company.attractiveness_results:
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=_NEEDS_MATRIX)
+    if queries.latest_matrix(db, company.id) is None:
+        raise errors.stage_order(_NEEDS_MATRIX, needs="matrix")
     try:
         return analysis_pipeline.run_scenario_for(
             db,
@@ -109,9 +110,7 @@ def create_scenario(
         )
     except ScenarioInputError as exc:
         # A bad override is the caller's problem, not a server fault.
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)
-        ) from exc
+        raise errors.invalid_input(str(exc)) from exc
 
 
 @router.get("/companies/{company_id}/scenarios", response_model=list[ScenarioOut])
@@ -126,9 +125,7 @@ def list_scenarios(company: CurrentCompany):
 def delete_scenario(company: CurrentCompany, scenario_id: str, db: DbSession):
     match = [s for s in company.scenarios if str(s.id) == scenario_id]
     if not match:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Scenario not found."
-        )
+        raise errors.not_found("Scenario", scenario_id)
     db.delete(match[0])
     db.commit()
 
@@ -165,9 +162,8 @@ def get_entity_timeline(
     """Quadrant migration across the periods sharing this entity key."""
     exists = db.scalar(select(Company.id).where(Company.entity_key == entity_key))
     if exists is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"No company periods carry entity_key '{entity_key}'.",
+        raise errors.AppError(
+            errors.NOT_FOUND, f"No company periods carry entity_key '{entity_key}'."
         )
     return analysis_pipeline.build_entity_timeline(db, entity_key, settings)
 
@@ -199,9 +195,7 @@ def run_backtest(payload: ValidationRequest, settings: AppSettings):
     try:
         result = run_validation(rows, settings)
     except ValidationInputError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)
-        ) from exc
+        raise errors.invalid_input(str(exc)) from exc
 
     return {
         "n": result.n,

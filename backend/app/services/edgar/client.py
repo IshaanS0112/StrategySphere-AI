@@ -29,12 +29,14 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import threading
 import time
 import urllib.error
 import urllib.request
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any, Callable, Iterable, Sequence
 
 logger = logging.getLogger(__name__)
 
@@ -88,6 +90,14 @@ def validate_user_agent(raw: str | None) -> str:
 class TokenBucket:
     """Classic token bucket: ``rate`` tokens per second, burst capped at ``rate``.
 
+    **Thread-safe**, which V3's version was not. That did not matter while
+    every fetch was serial; it matters the moment several workers share one
+    limiter, because two threads that read ``_tokens`` before either decrements
+    it both believe they may proceed - and the published rate is exceeded by
+    exactly the amount of concurrency. The lock is held across the accounting
+    only, never across the sleep, so waiting threads do not serialise behind
+    one another.
+
     ``clock`` and ``sleep`` are injectable so the limiter can be tested without
     a test suite that takes real seconds to run.
     """
@@ -107,6 +117,7 @@ class TokenBucket:
         self._clock = clock
         self._sleep = sleep
         self._last = clock()
+        self._lock = threading.Lock()
         self.waits: list[float] = []
 
     def _refill(self) -> None:
@@ -116,20 +127,26 @@ class TokenBucket:
         self._tokens = min(self.capacity, self._tokens + elapsed * self.rate)
 
     def take(self) -> float:
-        """Consume one token, blocking if necessary. Returns the seconds waited."""
-        self._refill()
-        if self._tokens >= 1.0:
-            self._tokens -= 1.0
-            self.waits.append(0.0)
-            return 0.0
+        """Consume one token, blocking if necessary. Returns the seconds waited.
 
-        deficit = 1.0 - self._tokens
-        wait = deficit / self.rate
+        The token is reserved *under the lock* before sleeping, so N threads
+        arriving together queue for distinct slots instead of all sleeping for
+        the same one and then firing at once.
+        """
+        with self._lock:
+            self._refill()
+            if self._tokens >= 1.0:
+                self._tokens -= 1.0
+                self.waits.append(0.0)
+                return 0.0
+            deficit = 1.0 - self._tokens
+            wait = deficit / self.rate
+            # Reserve now: the balance goes negative and the next caller's wait
+            # is computed from there, which is what spaces concurrent callers.
+            self._tokens -= 1.0
+            self.waits.append(wait)
+
         self._sleep(wait)
-        # Re-read the clock rather than assuming the sleep was exact.
-        self._refill()
-        self._tokens = max(0.0, self._tokens - 1.0)
-        self.waits.append(wait)
         return wait
 
 
@@ -168,6 +185,7 @@ class EdgarClient:
         requests_per_second: float = 5.0,
         timeout_seconds: float = 30.0,
         offline: bool = False,
+        concurrency: int = 1,
         transport: Callable[[str, dict[str, str], float], bytes] = _default_transport,
         clock: Callable[[], float] = time.monotonic,
         sleep: Callable[[float], None] = time.sleep,
@@ -182,6 +200,8 @@ class EdgarClient:
         self.timeout_seconds = float(timeout_seconds)
         self.bucket = TokenBucket(requests_per_second, clock=clock, sleep=sleep)
         self._transport = transport
+        self.concurrency = max(1, int(concurrency))
+        self._stats_lock = threading.Lock()
         self.stats = FetchStats()
 
     # --- cache ------------------------------------------------------------
@@ -222,7 +242,8 @@ class EdgarClient:
 
         hit = self.cached(url)
         if hit is not None:
-            self.stats.cache_hits += 1
+            with self._stats_lock:
+                self.stats.cache_hits += 1
             return hit
 
         if self.offline:
@@ -234,7 +255,8 @@ class EdgarClient:
             )
 
         waited = self.bucket.take()
-        self.stats.seconds_waiting += waited
+        with self._stats_lock:
+            self.stats.seconds_waiting += waited
         headers = {
             "User-Agent": self.user_agent,
             "Accept": "application/json",
@@ -246,24 +268,89 @@ class EdgarClient:
         try:
             raw = self._transport(url, headers, self.timeout_seconds)
         except urllib.error.HTTPError as exc:
-            self.stats.failures += 1
+            with self._stats_lock:
+                self.stats.failures += 1
             raise EdgarFetchError(f"{url} returned HTTP {exc.code}: {exc.reason}") from exc
         except (urllib.error.URLError, TimeoutError, OSError) as exc:
-            self.stats.failures += 1
+            with self._stats_lock:
+                self.stats.failures += 1
             raise EdgarFetchError(f"{url} could not be fetched: {exc}") from exc
 
-        self.stats.requests_made += 1
+        with self._stats_lock:
+            self.stats.requests_made += 1
         try:
             payload = json.loads(raw)
         except json.JSONDecodeError as exc:
-            self.stats.failures += 1
+            with self._stats_lock:
+                self.stats.failures += 1
             raise EdgarFetchError(f"{url} did not return JSON: {exc}") from exc
 
         self.cache_path(url).write_text(json.dumps(payload))
-        self.stats.cache_writes += 1
+        with self._stats_lock:
+            self.stats.cache_writes += 1
         return payload
 
     # --- the three endpoints ----------------------------------------------
+
+    def get_many(
+        self,
+        urls: Sequence[str],
+        *,
+        on_result: Callable[[str, dict[str, Any] | None, Exception | None], None] | None = None,
+    ) -> dict[str, dict[str, Any]]:
+        """Fetch many URLs with bounded concurrency, still rate-limited.
+
+        The SIC classification pass is one request per company - fifteen
+        hundred of them for a full build. Serially that is fifteen hundred
+        round trips laid end to end, and at five requests a second most of the
+        wall clock is latency the limiter is not even using.
+
+        Concurrency here overlaps that latency; it does **not** raise the rate.
+        Every worker takes a token from the same bucket first, so the outbound
+        rate is identical to the serial case and the SEC's published limit is
+        respected no matter what ``concurrency`` is set to.
+
+        Failures are returned rather than raised: one 404 among fifteen hundred
+        companies is data about that company, not a reason to abandon the pass.
+        """
+        results: dict[str, dict[str, Any]] = {}
+        if not urls:
+            return results
+
+        lock = threading.Lock()
+
+        def fetch(url: str) -> None:
+            try:
+                payload = self.get_json(url)
+            except Exception as exc:  # noqa: BLE001 - reported, not swallowed
+                if on_result:
+                    on_result(url, None, exc)
+                return
+            with lock:
+                results[url] = payload
+            if on_result:
+                on_result(url, payload, None)
+
+        workers = min(self.concurrency, len(urls))
+        if workers <= 1:
+            for url in urls:
+                fetch(url)
+            return results
+
+        with ThreadPoolExecutor(max_workers=workers, thread_name_prefix="edgar") as pool:
+            list(pool.map(fetch, urls))
+        return results
+
+    def submissions_many(
+        self,
+        ciks: Iterable[int],
+        *,
+        on_result: Callable[[str, dict[str, Any] | None, Exception | None], None] | None = None,
+    ) -> dict[int, dict[str, Any]]:
+        """``{cik: submissions payload}`` for many companies, concurrently."""
+        url_by_cik = {int(cik): SUBMISSIONS_URL.format(cik=int(cik)) for cik in ciks}
+        fetched = self.get_many(list(url_by_cik.values()), on_result=on_result)
+        return {cik: fetched[url] for cik, url in url_by_cik.items() if url in fetched}
 
     def frames(
         self, concept: str, *, unit: str = "USD", period: str = "CY2024", taxonomy: str = "us-gaap"
@@ -294,4 +381,5 @@ def client_from_settings(settings: Any, *, offline: bool | None = None) -> Edgar
         requests_per_second=settings.edgar_requests_per_second,
         timeout_seconds=settings.edgar_timeout_seconds,
         offline=settings.edgar_offline if offline is None else offline,
+        concurrency=getattr(settings, "edgar_concurrency", 1),
     )

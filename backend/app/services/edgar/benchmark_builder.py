@@ -45,7 +45,7 @@ from typing import Any, Callable
 from app.enums import BenchmarkBasis, MetricDerivation
 from app.services.edgar import concepts as concept_mod
 from app.services.edgar import sic as sic_mod
-from app.services.edgar.client import EdgarClient, EdgarFetchError, EdgarOfflineError
+from app.services.edgar.client import EdgarClient
 from app.services.edgar.frames import ResolvedConcept, resolve_candidates
 
 logger = logging.getLogger(__name__)
@@ -232,24 +232,34 @@ def _classify_sample(
 ) -> tuple[dict[int, str], dict[str, Any]]:
     """One submissions request per company, to get a SIC code and a sector."""
     sectors: dict[int, str] = {}
-    lookups = 0
     failures = 0
     unclassified = 0
-    for index, cik in enumerate(ciks, start=1):
-        try:
-            payload = client.submissions(cik)
-        except (EdgarFetchError, EdgarOfflineError) as exc:
-            failures += 1
-            logger.debug("submissions CIK%010d failed: %s", cik, exc)
+
+    # One request per company, so this is the longest phase of a build by an
+    # order of magnitude. Fetched with bounded concurrency: the shared token
+    # bucket still caps the outbound RATE at the configured limit, and the
+    # parallelism only overlaps round-trip latency the limiter was idle for.
+    done = {"n": 0}
+
+    def report(_url: str, _payload: object, error: Exception | None) -> None:
+        done["n"] += 1
+        if progress and done["n"] % 50 == 0:
+            progress(f"  classified {done['n']}/{len(ciks)} companies")
+
+    payloads = client.submissions_many(ciks, on_result=report)
+    failures = len(ciks) - len(payloads)
+
+    for cik in ciks:
+        payload = payloads.get(cik)
+        if payload is None:
             continue
-        lookups += 1
         raw_sic, _ = sic_mod.sic_from_submissions(payload)
         sector = sic_mod.sector_for_sic(raw_sic)
         if sector == sic_mod.UNCLASSIFIED:
             unclassified += 1
         sectors[cik] = sector
-        if progress and index % 50 == 0:
-            progress(f"  classified {index}/{len(ciks)} companies")
+
+    lookups = len(payloads)
     return sectors, {
         "companies_requested": len(ciks),
         "lookups_succeeded": lookups,

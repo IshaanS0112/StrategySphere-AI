@@ -29,7 +29,10 @@ function Builder({ onCreated }: { onCreated: (portfolio: Portfolio) => void }) {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    void api.listCompanies().then(setCompanies).catch(() => setCompanies([]));
+    void api
+      .listCompanies({ limit: 200 })
+      .then((page) => setCompanies(page.items))
+      .catch(() => setCompanies([]));
   }, []);
 
   function toggle(company: Company) {

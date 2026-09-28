@@ -31,6 +31,7 @@ from app.models import (
     SwotAnalysis,
     UncertaintyAnalysis,
 )
+from app.db import queries
 from app.services import market_structure, report_generator
 from app.services.attractiveness_matrix import AttractivenessResult, run_attractiveness_matrix
 from app.services.pricing_engine import PricingResult, run_pricing_engine
@@ -226,9 +227,12 @@ def _attractiveness_result_from_row(row: MarketAttractiveness) -> Attractiveness
 
 def run_report(db: Session, company: Company, settings: Settings) -> StrategyReport:
     """Build the structured context, then narrate it. Never raises for LLM problems."""
-    swot_row = company.swot_analyses[-1]
-    attractiveness_row = company.attractiveness_results[-1]
-    pricing_row = company.pricing_recommendations[-1] if company.pricing_recommendations else None
+    # Three targeted LIMIT 1 reads rather than three full collection loads.
+    # A company that has been re-run twenty times used to materialise sixty
+    # rows here, each carrying a kilobyte-scale calculation_basis, to use three.
+    swot_row = queries.latest_swot(db, company.id)
+    attractiveness_row = queries.latest_matrix(db, company.id)
+    pricing_row = queries.latest_pricing(db, company.id)
 
     context = report_generator.build_structured_context(
         company_id=str(company.id),
@@ -289,7 +293,7 @@ def run_porters(db: Session, company: Company, settings: Settings) -> PortersAna
     return row
 
 
-def compute_sensitivity(company: Company, settings: Settings) -> dict:
+def compute_sensitivity(db: Session, company: Company, settings: Settings) -> dict:
     """Sensitivity over the latest stored matrix result.
 
     Reads the persisted row rather than recomputing, for the same reason the
@@ -298,7 +302,7 @@ def compute_sensitivity(company: Company, settings: Settings) -> dict:
     """
     from app.services.sensitivity import run_sensitivity_analysis
 
-    row = company.attractiveness_results[-1]
+    row = queries.latest_matrix(db, company.id)
     result = run_sensitivity_analysis(
         market_growth_score=row.market_growth_score,
         market_size_score=row.market_size_score,
@@ -337,7 +341,7 @@ def run_scenario_for(
 ) -> Scenario:
     from app.services import scenario_engine
 
-    baseline_row = company.attractiveness_results[-1]
+    baseline_row = queries.latest_matrix(db, company.id)
     baseline_snapshot = {
         "market_growth_score": baseline_row.market_growth_score,
         "market_size_score": baseline_row.market_size_score,
@@ -388,12 +392,17 @@ def run_scenario_for(
 def build_entity_timeline(db: Session, entity_key: str, settings: Settings) -> dict:
     from app.services.timeline import build_timeline
 
-    companies = list(
-        db.scalars(select(Company).where(Company.entity_key == entity_key))
+    companies = queries.companies_for_entity(db, entity_key)
+    # One windowed query for every period's latest matrix row, instead of one
+    # full-collection load per company inside the loop. This was the clearest
+    # N+1 in the codebase: a ten-period entity issued eleven queries and
+    # materialised every matrix row it had ever stored.
+    latest_by_company = queries.latest_for_many(
+        db, MarketAttractiveness, [c.id for c in companies]
     )
     rows: list[dict] = []
     for company in companies:
-        latest = company.attractiveness_results[-1] if company.attractiveness_results else None
+        latest = latest_by_company.get(company.id)
         rows.append(
             {
                 "company_id": str(company.id),
@@ -441,7 +450,7 @@ def run_uncertainty(
     """
     from app.services.uncertainty import run_uncertainty_analysis
 
-    row = company.attractiveness_results[-1]
+    row = queries.latest_matrix(db, company.id)
     inputs = overrides if overrides is not None else (company.uncertainty_inputs or {})
 
     result = run_uncertainty_analysis(
@@ -479,7 +488,7 @@ def run_uncertainty(
     return stored
 
 
-def portfolio_units(portfolio: Portfolio) -> tuple[list, list[str]]:
+def portfolio_units(db: Session, portfolio: Portfolio) -> tuple[list, list[str]]:
     """Flatten members into engine units, reporting the ones that cannot play.
 
     A member whose company has never been through the matrix has no position on
@@ -492,17 +501,22 @@ def portfolio_units(portfolio: Portfolio) -> tuple[list, list[str]]:
     units: list[PortfolioUnit] = []
     unscored: list[str] = []
 
+    # Two windowed queries for the whole portfolio. The previous version was an
+    # N+1 twice over - a matrix collection load AND an uncertainty collection
+    # load per member - so a twelve-unit portfolio issued twenty-five queries
+    # to build twelve rows.
+    company_ids = [m.company_id for m in portfolio.members]
+    matrices = queries.latest_for_many(db, MarketAttractiveness, company_ids)
+    entropies = queries.latest_for_many(db, UncertaintyAnalysis, company_ids)
+
     for member in portfolio.members:
         company = member.company
-        if company is None or not company.attractiveness_results:
+        matrix = matrices.get(member.company_id)
+        if company is None or matrix is None:
             unscored.append(company.name if company else str(member.company_id))
             continue
-        matrix = company.attractiveness_results[-1]
-        entropy = (
-            company.uncertainty_analyses[-1].entropy_bits
-            if company.uncertainty_analyses
-            else None
-        )
+        uncertainty = entropies.get(member.company_id)
+        entropy = uncertainty.entropy_bits if uncertainty is not None else None
         units.append(
             PortfolioUnit(
                 entity_key=company.entity_key or str(company.id),
@@ -527,7 +541,7 @@ def run_allocation(
     """Allocate a budget across the portfolio and store the run."""
     from app.services.portfolio import PortfolioInputError, allocate_capital
 
-    units, unscored = portfolio_units(portfolio)
+    units, unscored = portfolio_units(db, portfolio)
     if unscored:
         raise PortfolioInputError(
             f"{len(unscored)} member(s) have no market attractiveness result: "

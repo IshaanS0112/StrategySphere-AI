@@ -77,7 +77,9 @@ def seed_full_company(client) -> str:
 
 class TestMeta:
     def test_health(self, client):
-        assert client.get("/health").json() == {"status": "ok"}
+        body = client.get("/health").json()
+        assert body["status"] == "ok"
+        assert body["version"] == "3.1.0"
 
     def test_methodology_exposes_the_parameter_set(self, client):
         body = client.get("/methodology").json()
@@ -547,10 +549,12 @@ class TestBenchmarkProvenanceEndpoint:
         assert body["is_edgar_sourced"] is False
         assert "PLACEHOLDER" in body["provenance"]
 
-    def test_building_is_a_cli_job_not_an_endpoint(self, client):
-        response = client.post("/benchmarks/build")
-        assert response.status_code == 501
-        assert "build_benchmarks.py" in response.json()["detail"]
+    def test_building_without_a_user_agent_is_refused_immediately(self, client):
+        # The suite runs with no EDGAR_USER_AGENT. Failing now beats failing
+        # two minutes into a job on a problem the server could see at once.
+        response = client.post("/benchmarks/build", json={"period": "CY2024"})
+        assert response.status_code == 503
+        assert response.json()["code"] == "NOT_CONFIGURED"
 
 
 class TestMethodologyV3:
@@ -569,3 +573,181 @@ class TestMethodologyV3:
         body = client.get("/methodology").json()
         assert body["edgar"]["min_sector_n"] == 20
         assert body["edgar"]["requests_per_second"] == 5.0
+
+
+# --------------------------------------------------------------------------
+# V3.1
+# --------------------------------------------------------------------------
+
+
+class TestPaginationEndpoint:
+    def _seed(self, client, count: int) -> None:
+        for index in range(count):
+            create_company(
+                client,
+                {
+                    **COMPANY,
+                    "name": f"Paged {index:02d}",
+                    "industry": "saas" if index % 2 else "retail",
+                },
+            )
+
+    def test_a_page_carries_items_and_a_cursor(self, client):
+        self._seed(client, 7)
+        body = client.get("/companies", params={"limit": 3}).json()
+        assert len(body["items"]) == 3
+        assert body["next_cursor"]
+        assert body["total"] is None
+
+    def test_paging_through_visits_every_row_exactly_once(self, client):
+        self._seed(client, 11)
+        seen: list[str] = []
+        cursor = None
+        for _ in range(10):
+            params = {"limit": 4}
+            if cursor:
+                params["cursor"] = cursor
+            body = client.get("/companies", params=params).json()
+            seen += [item["id"] for item in body["items"]]
+            cursor = body["next_cursor"]
+            if not cursor:
+                break
+        assert len(seen) == 11
+        assert len(set(seen)) == 11, "a row appeared on two pages"
+
+    def test_the_last_page_has_no_cursor(self, client):
+        self._seed(client, 3)
+        body = client.get("/companies", params={"limit": 50}).json()
+        assert body["next_cursor"] is None
+
+    def test_an_insert_mid_paging_does_not_duplicate_a_row(self, client):
+        # The reason for keyset over offset: with OFFSET, inserting a newer row
+        # shifts every later page by one, so a row is shown twice and another
+        # is never shown at all.
+        self._seed(client, 6)
+        first = client.get("/companies", params={"limit": 3}).json()
+        create_company(client, {**COMPANY, "name": "Inserted Later"})
+        second = client.get(
+            "/companies", params={"limit": 3, "cursor": first["next_cursor"]}
+        ).json()
+        assert not ({i["id"] for i in first["items"]} & {i["id"] for i in second["items"]})
+
+    def test_total_is_opt_in(self, client):
+        self._seed(client, 5)
+        body = client.get("/companies", params={"limit": 2, "with_total": True}).json()
+        assert body["total"] == 5
+
+    def test_filtering_by_industry(self, client):
+        self._seed(client, 6)
+        body = client.get("/companies", params={"industry": "SaaS", "limit": 50}).json()
+        assert body["items"]
+        assert all(item["industry"] == "saas" for item in body["items"])
+
+    def test_searching_by_name(self, client):
+        self._seed(client, 4)
+        body = client.get("/companies", params={"q": "paged 02"}).json()
+        assert [item["name"] for item in body["items"]] == ["Paged 02"]
+
+    def test_the_limit_is_clamped_to_the_configured_maximum(self, client):
+        self._seed(client, 3)
+        assert client.get("/companies", params={"limit": 500}).status_code == 200
+        assert client.get("/companies", params={"limit": 5000}).status_code == 422
+
+    def test_a_forged_cursor_is_a_422_with_advice(self, client):
+        response = client.get("/companies", params={"cursor": "!!!not-a-cursor"})
+        assert response.status_code == 422
+        assert "start from the first page" in response.json()["detail"]
+
+
+class TestJobsEndpoints:
+    def test_listing_is_empty_to_begin_with(self, client):
+        assert client.get("/jobs").json() == []
+
+    def test_an_unknown_job_is_404(self, client):
+        import uuid as _uuid
+
+        response = client.get(f"/jobs/{_uuid.uuid4()}")
+        assert response.status_code == 404
+        assert response.json()["code"] == "NOT_FOUND"
+
+    def test_a_panel_build_without_a_user_agent_is_refused(self, client):
+        response = client.post("/validation/panels", json={"scoring_period": "CY2020"})
+        assert response.status_code == 503
+        assert response.json()["code"] == "NOT_CONFIGURED"
+
+    def test_the_build_request_refuses_a_path_outside_data(self, client):
+        response = client.post(
+            "/benchmarks/build", json={"period": "CY2024", "out": "/etc/passwd"}
+        )
+        assert response.status_code == 422
+
+    def test_a_queued_job_can_be_cancelled_and_then_not_again(self, client, db_session):
+        from app.config import Settings
+        from app.services import jobs as jobs_service
+
+        db, _engine = db_session
+
+        @jobs_service.register("test.api")
+        def _api(_context, _params, _settings):
+            return {}
+
+        jobs_service.shutdown_runner(wait=False)   # nothing will pick it up
+        row = jobs_service.submit(
+            db, "test.api", {}, settings=Settings(_env_file=None), dedupe=False
+        )
+
+        assert client.get(f"/jobs/{row.id}").json()["state"] == "QUEUED"
+        assert client.post(f"/jobs/{row.id}/cancel").json()["state"] == "CANCELLED"
+
+        again = client.post(f"/jobs/{row.id}/cancel")
+        assert again.status_code == 409
+        assert again.json()["code"] == "JOB_CONFLICT"
+
+    def test_a_pending_job_tells_the_client_when_to_poll(self, client, db_session):
+        from app.config import Settings
+        from app.services import jobs as jobs_service
+
+        db, _engine = db_session
+
+        @jobs_service.register("test.retry")
+        def _retry(_context, _params, _settings):
+            return {}
+
+        jobs_service.shutdown_runner(wait=False)
+        row = jobs_service.submit(
+            db, "test.retry", {}, settings=Settings(_env_file=None), dedupe=False
+        )
+        assert client.get(f"/jobs/{row.id}").headers["Retry-After"] == "2"
+
+
+class TestReadiness:
+    def test_ready_reports_each_dependency_separately(self, client):
+        body = client.get("/ready").json()
+        assert body["status"] in {"ready", "degraded"}
+        assert body["checks"]["database"]["ok"] is True
+        assert "latency_ms" in body["checks"]["database"]
+        assert body["checks"]["schema"]["ok"] is True
+        assert body["checks"]["benchmarks"]["sectors"] > 0
+        assert "jobs" in body["checks"]
+
+    def test_liveness_touches_nothing(self, client):
+        # A liveness probe that checks the database restarts the API whenever
+        # the database hiccups, turning a dependency blip into a self-inflicted
+        # outage. This one only reports that the process is up.
+        body = client.get("/health").json()
+        assert set(body) == {"status", "version", "uptime_seconds"}
+
+
+class TestConditionalRequests:
+    def test_methodology_serves_an_etag_and_then_a_304(self, client):
+        first = client.get("/methodology")
+        etag = first.headers["ETag"]
+        assert etag.startswith('W/"')
+        second = client.get("/methodology", headers={"If-None-Match": etag})
+        assert second.status_code == 304
+        assert second.content == b""
+
+    def test_a_stale_etag_gets_the_body(self, client):
+        response = client.get("/methodology", headers={"If-None-Match": 'W/"stale"'})
+        assert response.status_code == 200
+        assert response.json()["attractiveness_weights"]

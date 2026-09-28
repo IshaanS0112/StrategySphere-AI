@@ -66,7 +66,7 @@ export default function Dashboard() {
 
   async function refresh() {
     try {
-      setCompanies(await api.listCompanies());
+      setCompanies((await api.listCompanies({ limit: 100 })).items);
     } catch (err) {
       setError((err as Error).message);
     }

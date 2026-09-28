@@ -11,11 +11,13 @@ from __future__ import annotations
 
 import uuid
 from datetime import date, datetime
-from typing import Any, Literal
+from typing import Any, Generic, Literal, TypeVar
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from app.enums import MarginBasis
+
+ItemT = TypeVar("ItemT")
 
 FEATURE_SCORE_MIN = 1.0
 FEATURE_SCORE_MAX = 5.0
@@ -434,3 +436,83 @@ class AllocationRunOut(BaseModel):
     harvest_contribution: float
     calculation_basis: dict[str, Any]
     generated_at: datetime | None
+
+
+# --------------------------------------------------------------------------
+# V3.1
+# --------------------------------------------------------------------------
+
+
+class Page(BaseModel, Generic[ItemT]):
+    """A cursor-paginated slice.
+
+    Cursor, not offset. ``LIMIT n OFFSET m`` re-scans and discards m rows on
+    every page, so page 50 costs fifty times page 1, and a row inserted while a
+    client pages through will shift every subsequent page - duplicating one row
+    and skipping another. A keyset cursor over ``(created_at, id)`` is stable
+    under concurrent writes and costs the same for every page.
+    """
+
+    items: list[ItemT]
+    next_cursor: str | None = Field(
+        default=None,
+        description="Opaque. Pass back as ?cursor= for the next page; null means the end.",
+    )
+    # Deliberately not a total count. COUNT(*) on every page is a full scan to
+    # render a number nobody acts on; ask for it explicitly with ?with_total=1.
+    total: int | None = None
+
+
+class JobOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    kind: str
+    state: str
+    params: dict[str, Any]
+    result: dict[str, Any] | None
+    error: str | None
+    progress: float
+    message: str | None
+    request_id: str | None
+    created_at: datetime | None
+    started_at: datetime | None
+    finished_at: datetime | None
+    duration_seconds: float | None
+
+
+class BenchmarkBuildRequest(BaseModel):
+    period: str = Field(default="CY2024", pattern=r"^CY\d{4}$")
+    prior_period: str | None = Field(default=None, pattern=r"^CY\d{4}$")
+    out: str | None = Field(
+        default=None,
+        max_length=300,
+        description="Where to write the table. Defaults to data/benchmarks/edgar_<period>.json",
+    )
+    min_sector_n: int | None = Field(default=None, ge=2, le=5000)
+    sic_limit: int | None = Field(default=None, ge=0, le=10000)
+    offline: bool = Field(
+        default=False, description="Serve from the response cache only; fail on a miss."
+    )
+
+    @field_validator("out")
+    @classmethod
+    def _contained(cls, value: str | None) -> str | None:
+        # A path this endpoint accepts becomes a file this server writes. Keep
+        # it inside the data directory rather than letting a caller choose
+        # where the process puts bytes.
+        if value is None:
+            return None
+        cleaned = value.strip()
+        if cleaned.startswith("/") or ".." in cleaned.split("/"):
+            raise ValueError("out must be a relative path inside data/")
+        if not cleaned.startswith("data/"):
+            raise ValueError("out must live under data/")
+        return cleaned
+
+
+class PanelBuildRequest(BaseModel):
+    scoring_period: str = Field(default="CY2020", pattern=r"^CY\d{4}$")
+    horizon: int = Field(default=3, ge=1, le=10)
+    out: str | None = Field(default=None, max_length=300)
+    offline: bool = False

@@ -3,24 +3,25 @@
 from __future__ import annotations
 
 import logging
+import time
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.gzip import GZipMiddleware
 
-from sqlalchemy import inspect
+from sqlalchemy import inspect, text
 
+from app import errors, obs
 from app.config import get_settings
 from app.db.session import engine
-from app.routers import analysis, companies, strategy_v2, strategy_v3
-from app.services.benchmarks import load_industry_benchmarks
+from app.services import cache
+from app.routers import analysis, companies, jobs as jobs_router, strategy_v2, strategy_v3
 from app.services.portfolio import ALLOCATION_RULE_STATUS
 from app.services.uncertainty import SUPPORTED_INPUTS as SUPPORTED_UNCERTAINTY_INPUTS
 
-logging.basicConfig(
-    level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s"
-)
 logger = logging.getLogger("strategysphere")
+STARTED_AT = time.time()
 
 
 EXPECTED_TABLES = {
@@ -36,6 +37,7 @@ EXPECTED_TABLES = {
     "portfolios",
     "portfolio_members",
     "allocation_runs",
+    "jobs",
 }
 
 
@@ -56,6 +58,9 @@ def _assert_schema_present() -> None:
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
+    settings_at_boot = get_settings()
+    obs.configure_logging(settings_at_boot.log_level, settings_at_boot.log_format)
+
     # V1 called Base.metadata.create_all here. That works while a schema is
     # append-only and stops working the moment a column changes shape, which
     # V2 needed. The app no longer creates its own schema: Alembic owns it, the
@@ -65,8 +70,8 @@ async def lifespan(_: FastAPI):
     _assert_schema_present()
 
     settings = get_settings()
-    _, provenance = load_industry_benchmarks(settings.industry_benchmarks_path)
-    logger.info("Industry benchmark table: %s", provenance)
+    provenance = cache.benchmark_table(settings.industry_benchmarks_path).provenance
+    logger.info("benchmark table loaded", extra={"ctx_provenance": provenance})
     if not settings.edgar_user_agent:
         logger.info(
             "No EDGAR_USER_AGENT configured. The API runs normally; rebuilding the "
@@ -74,17 +79,26 @@ async def lifespan(_: FastAPI):
         )
     if not settings.anthropic_api_key:
         logger.info(
-            "No ANTHROPIC_API_KEY configured. Strategy reports will use the deterministic "
-            "template fallback - every number is identical, only the prose is missing."
+            "no ANTHROPIC_API_KEY configured; strategy reports use the deterministic "
+            "template fallback - every number is identical, only the prose is missing"
         )
-    yield
+
+    from app.services import jobs
+
+    jobs.start_runner(settings)
+    try:
+        yield
+    finally:
+        # Drain in-flight jobs on shutdown rather than killing them mid-write,
+        # which would leave a RUNNING row nobody will ever finish.
+        jobs.shutdown_runner()
 
 
 settings = get_settings()
 
 app = FastAPI(
     title="StrategySphere API",
-    version="3.0.0",
+    version="3.1.0",
     description=(
         "Executive decision intelligence. A SWOT scoring engine benchmarked against "
         "peer financials or sector medians built from SEC XBRL filings, a "
@@ -98,33 +112,115 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+# Order matters: the observability middleware is added last, so it sits
+# OUTERMOST and therefore times and logs everything the others do - including
+# the cost of compression and the CORS preflights.
+app.add_middleware(GZipMiddleware, minimum_size=1024)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origin_list,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    # Without this the browser cannot read the id it needs to quote in a bug
+    # report, which makes the whole request-id scheme decorative.
+    expose_headers=[obs.REQUEST_ID_HEADER, "Server-Timing", "ETag"],
+)
+app.add_middleware(
+    obs.ObservabilityMiddleware, slow_request_seconds=settings.slow_request_seconds
 )
 
-for module in (companies, analysis, strategy_v2, strategy_v3):
+errors.install_handlers(app)
+
+for module in (companies, analysis, strategy_v2, strategy_v3, jobs_router):
     app.include_router(module.router)
 
 
 @app.get("/health", tags=["meta"])
-def health() -> dict[str, str]:
-    return {"status": "ok"}
+def health() -> dict[str, object]:
+    """Liveness. Deliberately touches nothing.
+
+    A liveness probe that checks the database restarts the API when the
+    database hiccups, which converts a recoverable dependency failure into an
+    outage of its own making. Readiness is the probe that checks dependencies.
+    """
+    return {"status": "ok", "version": app.version, "uptime_seconds": round(time.time() - STARTED_AT, 1)}
+
+
+@app.get("/ready", tags=["meta"])
+def ready() -> dict[str, object]:
+    """Readiness: can this process actually serve a request right now?
+
+    Checks the things a request needs - a live connection, the migrated
+    schema, a loadable benchmark table - and reports each one separately so a
+    failing probe names its cause instead of just saying no.
+    """
+    from app.services import jobs
+
+    checks: dict[str, object] = {}
+    healthy = True
+
+    started = time.perf_counter()
+    try:
+        with engine.connect() as connection:
+            connection.execute(text("SELECT 1"))
+        checks["database"] = {
+            "ok": True,
+            "latency_ms": round((time.perf_counter() - started) * 1000, 2),
+        }
+    except Exception as exc:  # noqa: BLE001 - the reason is the payload
+        healthy = False
+        checks["database"] = {"ok": False, "error": str(exc)}
+
+    try:
+        present = set(inspect(engine).get_table_names())
+        missing = sorted(EXPECTED_TABLES - present)
+        checks["schema"] = {"ok": not missing, "missing": missing}
+        healthy = healthy and not missing
+    except Exception as exc:  # noqa: BLE001
+        healthy = False
+        checks["schema"] = {"ok": False, "error": str(exc)}
+
+    table = cache.benchmark_table(settings.industry_benchmarks_path)
+    checks["benchmarks"] = {
+        "ok": bool(table.rows),
+        "sectors": len(table.rows),
+        "sourced": table.provenance_detail is not None,
+    }
+    checks["jobs"] = jobs.runner_status()
+
+    payload = {"status": "ready" if healthy else "degraded", "checks": checks}
+    if not healthy:
+        from fastapi.responses import JSONResponse
+
+        return JSONResponse(status_code=503, content=payload)
+    return payload
+
+
+@app.get("/metrics", tags=["meta"], include_in_schema=False)
+def metrics() -> Response:
+    """Prometheus text exposition.
+
+    Per-process counters: behind several workers this is one worker's view,
+    which is the standard caveat for in-process instrumentation and the reason
+    a real deployment scrapes every worker rather than a load-balanced address.
+    """
+    if not settings.metrics_enabled:
+        raise errors.AppError(errors.NOT_CONFIGURED, "Metrics are disabled by configuration.")
+    obs.METRICS.set_gauge("app_uptime_seconds", round(time.time() - STARTED_AT, 1))
+    return Response(content=obs.METRICS.render(), media_type="text/plain; version=0.0.4")
 
 
 @app.get("/methodology", tags=["meta"])
-def methodology() -> dict[str, object]:
+def methodology(request: Request, response: Response) -> object:
     """The parameter set currently in force.
 
     Exposed as an endpoint because the honest claim this project makes - that
     the scores are computed, not generated - is only checkable if the weights
     and thresholds behind them are visible without reading the source.
     """
-    _, provenance = load_industry_benchmarks(settings.industry_benchmarks_path)
-    return {
+    provenance = cache.benchmark_table(settings.industry_benchmarks_path).provenance
+    payload: dict[str, object] = {
         "frameworks": [
             "GE-McKinsey market attractiveness matrix (GE / McKinsey, c. 1971)",
             "Herfindahl-Hirschman Index, DOJ/FTC 2023 Merger Guidelines bands",
@@ -247,3 +343,13 @@ def methodology() -> dict[str, object]:
             "not present in that context are dropped."
         ),
     }
+
+    # This payload changes only when configuration or the benchmark file does,
+    # and the dashboard requests it on every page load. An ETag turns that into
+    # a 304 with no body.
+    etag = cache.etag_for(payload)
+    response.headers["ETag"] = etag
+    response.headers["Cache-Control"] = "private, max-age=60"
+    if request.headers.get("if-none-match") == etag:
+        return Response(status_code=304, headers={"ETag": etag})
+    return payload

@@ -9,9 +9,11 @@ from __future__ import annotations
 
 import uuid
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, status
 from sqlalchemy import select
 
+from app import errors
+from app.db import queries
 from app.models import Company, Portfolio, PortfolioMember
 from app.routers.deps import AppSettings, CurrentCompany, DbSession
 from app.schemas import (
@@ -23,7 +25,7 @@ from app.schemas import (
     UncertaintyRequest,
 )
 from app.services import analysis_pipeline
-from app.services.benchmarks import load_benchmark_table
+from app.services import cache
 from app.services.portfolio import PortfolioInputError
 from app.services.uncertainty import UncertaintyInputError
 
@@ -57,8 +59,8 @@ def create_uncertainty_analysis(
     correct answer to "how uncertain is this" when nobody claimed to be
     uncertain about anything.
     """
-    if not company.attractiveness_results:
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=_NEEDS_MATRIX)
+    if queries.latest_matrix(db, company.id) is None:
+        raise errors.stage_order(_NEEDS_MATRIX, needs="matrix")
 
     overrides = (
         {key: value.model_dump() for key, value in payload.uncertainty_inputs.items()}
@@ -74,19 +76,17 @@ def create_uncertainty_analysis(
             persist_inputs=payload.persist_inputs,
         )
     except UncertaintyInputError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)
-        ) from exc
+        raise errors.invalid_input(str(exc)) from exc
 
 
 @router.get("/companies/{company_id}/uncertainty", response_model=UncertaintyAnalysisOut)
-def get_uncertainty_analysis(company: CurrentCompany):
-    if not company.uncertainty_analyses:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="No uncertainty analysis has been run for this company yet.",
+def get_uncertainty_analysis(company: CurrentCompany, db: DbSession):
+    row = queries.latest_uncertainty(db, company.id)
+    if row is None:
+        raise errors.AppError(
+            errors.NOT_FOUND, "No uncertainty analysis has been run for this company yet."
         )
-    return company.uncertainty_analyses[-1]
+    return row
 
 
 # --------------------------------------------------------------------------
@@ -102,18 +102,19 @@ def create_portfolio(payload: PortfolioCreate, db: DbSession):
         if db.get(Company, member.company_id) is None
     ]
     if missing:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"No such compan{'y' if len(missing) == 1 else 'ies'}: {', '.join(missing)}",
+        raise errors.AppError(
+            errors.NOT_FOUND,
+            f"No such compan{'y' if len(missing) == 1 else 'ies'}: {', '.join(missing)}",
+            missing_company_ids=missing,
         )
 
     seen: set[str] = set()
     for member in payload.members:
         key = str(member.company_id)
         if key in seen:
-            raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                detail=f"Company {key} appears twice; a unit cannot compete against itself.",
+            raise errors.invalid_input(
+                f"Company {key} appears twice; a unit cannot compete against itself.",
+                duplicate_company_id=key,
             )
         seen.add(key)
 
@@ -143,9 +144,7 @@ def list_portfolios(db: DbSession):
 def _load_portfolio(db, portfolio_id: uuid.UUID) -> Portfolio:
     portfolio = db.get(Portfolio, portfolio_id)
     if portfolio is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail=f"Portfolio {portfolio_id} not found"
-        )
+        raise errors.not_found("Portfolio", portfolio_id)
     return portfolio
 
 
@@ -179,7 +178,7 @@ def allocate(
             db, portfolio, settings, budget=payload.budget
         )
     except PortfolioInputError as exc:
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+        raise errors.AppError(errors.BUDGET_INFEASIBLE, str(exc)) from exc
 
 
 @router.get("/portfolios/{portfolio_id}/allocations", response_model=list[AllocationRunOut])
@@ -199,7 +198,7 @@ def benchmark_provenance(settings: AppSettings):
     With no table configured it says so in the same words the built-in table has
     always used, which is the honest answer rather than an empty block.
     """
-    table = load_benchmark_table(settings.industry_benchmarks_path)
+    table = cache.benchmark_table(settings.industry_benchmarks_path)
     sectors = sorted(key for key in table.rows if key != "_default")
     return {
         "path": settings.industry_benchmarks_path or None,
@@ -224,28 +223,7 @@ def benchmark_provenance(settings: AppSettings):
     }
 
 
-@router.post("/benchmarks/build", tags=["meta"])
-def build_benchmarks(settings: AppSettings):
-    """Deliberately not implemented as a live fetch from a request handler.
-
-    Building the table is a minutes-long job that makes hundreds of outbound
-    requests to a public government API under a rate limit. Behind an
-    unauthenticated HTTP endpoint that is a way for anyone who can reach this
-    service to spend the operator's rate budget, and the operator would find
-    out from the SEC rather than from their own logs. It is a CLI command,
-    which is also where a long-running job belongs.
-    """
-    raise HTTPException(
-        status_code=status.HTTP_501_NOT_IMPLEMENTED,
-        detail=(
-            "Benchmark building is a CLI job, not an HTTP endpoint. It makes "
-            "hundreds of rate-limited requests to data.sec.gov over several "
-            "minutes; exposing that on an unauthenticated route would let any "
-            "caller spend the operator's SEC rate budget. Run:\n"
-            "    EDGAR_USER_AGENT='Your Name you@example.com' \\\n"
-            "    python backend/scripts/build_benchmarks.py --period CY2024 \\\n"
-            "        --out data/benchmarks/edgar_CY2024.json\n"
-            "then set INDUSTRY_BENCHMARKS_PATH to the output and restart. "
-            "GET /benchmarks/provenance reports what is live now."
-        ),
-    )
+# POST /benchmarks/build now lives in routers/jobs.py. V3 answered it with a
+# 501 and a CLI command, on the reasoning that hundreds of rate-limited calls
+# over several minutes do not belong inside a request. That reasoning holds;
+# the conclusion was wrong. The work is now enqueued and polled.

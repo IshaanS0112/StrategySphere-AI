@@ -31,6 +31,7 @@ from typing import Any
 from app.config import Settings
 from app.enums import BenchmarkBasis, SwotCategory
 from app.services import benchmarks as bench
+from app.services import cache
 from app.services.market_structure import ConcentrationResult
 
 # Band edges for market-level inputs, ascending. A value below the first edge
@@ -413,7 +414,10 @@ def run_swot_analysis(
     settings: Settings,
 ) -> SwotResult:
     """Score a full SWOT grid. Deterministic: same inputs, same output, no LLM."""
-    benchmark_table = bench.load_benchmark_table(settings.industry_benchmarks_path)
+    # Cached on (path, mtime, size): the table is parsed once per version of
+    # the file rather than once per scoring run, and a rebuilt table is picked
+    # up on the next call with no restart.
+    benchmark_table = cache.benchmark_table(settings.industry_benchmarks_path)
     peer_financials = [
         c.get("financial_data") or {} for c in competitors if isinstance(c, dict)
     ]

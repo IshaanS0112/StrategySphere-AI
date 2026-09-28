@@ -3,12 +3,15 @@ import type {
   BenchmarkProvenance,
   Company,
   Competitor,
+  Job,
   MarketAttractiveness,
   Methodology,
   PortersAnalysis,
   PricingRecommendation,
   Scenario,
+  Page,
   Portfolio,
+  Problem,
   Sensitivity,
   StrategyReport,
   SwotAnalysis,
@@ -26,6 +29,10 @@ export class ApiError extends Error {
     message: string,
     readonly status: number,
     readonly detail?: unknown,
+    /** Stable machine code from the problem document, e.g. "STAGE_ORDER". */
+    readonly code?: string,
+    /** Quote this in a bug report; it ties the failure to the server's logs. */
+    readonly requestId?: string,
   ) {
     super(message);
     this.name = "ApiError";
@@ -39,23 +46,25 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   });
 
   if (!response.ok) {
-    let detail: unknown;
+    // Every error is now an RFC 9457 problem document, including the ones
+    // FastAPI raises itself, so there is one shape to parse rather than two.
+    let problem: Partial<Problem> = {};
     try {
-      detail = (await response.json()).detail;
+      problem = (await response.json()) as Problem;
     } catch {
-      detail = await response.text();
+      problem = { detail: await response.text() };
     }
-    // FastAPI's detail is a string for our explicit HTTPExceptions and an
-    // array of error objects for request-validation failures.
     const message =
-      typeof detail === "string"
-        ? detail
-        : Array.isArray(detail)
-          ? detail
-              .map((d: any) => `${(d.loc ?? []).slice(1).join(".")}: ${d.msg}`)
-              .join("; ")
-          : `Request failed (${response.status})`;
-    throw new ApiError(message, response.status, detail);
+      typeof problem.detail === "string" && problem.detail
+        ? problem.detail
+        : `Request failed (${response.status})`;
+    throw new ApiError(
+      message,
+      response.status,
+      problem.detail,
+      problem.code,
+      problem.request_id,
+    );
   }
 
   if (response.status === 204) return undefined as T;
@@ -98,7 +107,20 @@ export interface CompetitorDraft {
 export const api = {
   methodology: () => request<Methodology>("/methodology"),
 
-  listCompanies: () => request<Company[]>("/companies"),
+  listCompanies: (params?: {
+    limit?: number;
+    cursor?: string;
+    industry?: string;
+    q?: string;
+    with_total?: boolean;
+  }) => {
+    const query = new URLSearchParams();
+    for (const [key, value] of Object.entries(params ?? {})) {
+      if (value !== undefined && value !== "") query.set(key, String(value));
+    }
+    const suffix = query.toString() ? `?${query}` : "";
+    return request<Page<Company>>(`/companies${suffix}`);
+  },
   getCompany: (id: string) => request<Company>(`/companies/${id}`),
   createCompany: (body: CompanyDraft) =>
     request<Company>("/companies", { method: "POST", body: JSON.stringify(body) }),
@@ -193,6 +215,20 @@ export const api = {
   listAllocations: (id: string) => request<AllocationRun[]>(`/portfolios/${id}/allocations`),
 
   benchmarkProvenance: () => request<BenchmarkProvenance>("/benchmarks/provenance"),
+
+  listJobs: (params?: { kind?: string; state?: string; limit?: number }) => {
+    const query = new URLSearchParams();
+    for (const [key, value] of Object.entries(params ?? {})) {
+      if (value !== undefined) query.set(key, String(value));
+    }
+    const suffix = query.toString() ? `?${query}` : "";
+    return request<Job[]>(`/jobs${suffix}`);
+  },
+  getJob: (id: string) => request<Job>(`/jobs/${id}`),
+  cancelJob: (id: string) =>
+    request<Job>(`/jobs/${id}/cancel`, { method: "POST" }),
+  buildBenchmarks: (body: { period?: string; sic_limit?: number; offline?: boolean }) =>
+    request<Job>("/benchmarks/build", { method: "POST", body: JSON.stringify(body) }),
 
   listEntities: () =>
     request<{ entity_key: string; name: string; periods: (string | null)[] }[]>("/entities"),

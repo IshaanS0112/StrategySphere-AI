@@ -153,3 +153,28 @@ class MetricDerivation(str, Enum):
     RATIO = "RATIO"              # numerator / denominator x 100, same period and unit
     GROWTH = "GROWTH"            # (value_T / value_T-1 - 1) x 100
     NOT_DERIVABLE = "NOT_DERIVABLE"   # no honest XBRL proxy exists; declared, not faked
+
+
+# --------------------------------------------------------------------------
+# V3.1
+# --------------------------------------------------------------------------
+
+
+class JobState(str, Enum):
+    """Lifecycle of a background job.
+
+    Terminal states are SUCCEEDED, FAILED and CANCELLED. A job that is RUNNING
+    with a stale heartbeat is moved to FAILED by the reaper rather than being
+    left in limbo, because a queue people cannot trust to finish is a queue
+    people stop using.
+    """
+
+    QUEUED = "QUEUED"
+    RUNNING = "RUNNING"
+    SUCCEEDED = "SUCCEEDED"
+    FAILED = "FAILED"
+    CANCELLED = "CANCELLED"
+
+    @property
+    def terminal(self) -> bool:
+        return self in {JobState.SUCCEEDED, JobState.FAILED, JobState.CANCELLED}

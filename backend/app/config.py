@@ -173,6 +173,36 @@ class Settings(BaseSettings):
     uncertainty_decisive_below: float = 0.25
     uncertainty_contested_at_or_above: float = 0.85
 
+    # --- V3.1: Observability ------------------------------------------------
+    log_level: str = "INFO"
+    # json for anything that ships logs somewhere; text for a human terminal.
+    log_format: str = "json"                   # json | text
+    # A request slower than this is logged at WARNING with slow=true. One
+    # second is generous for this workload: the only endpoints that legitimately
+    # exceed it are the Monte Carlo and an LLM narration.
+    slow_request_seconds: float = 1.0
+    metrics_enabled: bool = True
+
+    # --- V3.1: Pagination ---------------------------------------------------
+    page_size_default: int = 25
+    page_size_max: int = 200
+
+    # --- V3.1: Background jobs ----------------------------------------------
+    # Worker threads for long-running work (an EDGAR rebuild, a panel build).
+    # These are I/O-bound and rate-limited by the SEC bucket, so threads are
+    # the right primitive and the GIL is not the constraint.
+    job_workers: int = 2
+    # A job that has not heartbeated for this long is presumed dead and marked
+    # FAILED, so a crashed worker cannot leave a job RUNNING forever.
+    job_heartbeat_timeout_seconds: float = 120.0
+    job_retention_days: int = 30
+
+    # --- V3.1: EDGAR concurrency --------------------------------------------
+    # Parallel in-flight requests to data.sec.gov. The TOKEN BUCKET still caps
+    # the rate; this only overlaps network latency, so the published limit is
+    # respected no matter what this is set to.
+    edgar_concurrency: int = 4
+
     # --- V3: Portfolio capital allocation ----------------------------------
     # PROJECT-DEFINED ALLOCATION RULE. GE-McKinsey positions business units; it
     # prescribes no allocation arithmetic at all. Everything in this block is
@@ -267,6 +297,21 @@ class Settings(BaseSettings):
 
         if not 0.0 <= self.harvest_contribution_rate <= 1.0:
             raise ValueError("harvest_contribution_rate must be a fraction in [0, 1]")
+
+        if self.log_format not in {"json", "text"}:
+            raise ValueError("log_format must be json or text")
+
+        if self.page_size_default > self.page_size_max:
+            raise ValueError("page_size_default cannot exceed page_size_max")
+
+        if self.job_workers < 1:
+            raise ValueError("job_workers must be at least 1")
+
+        # Concurrency cannot outrun the rate limiter, but a pool far larger
+        # than the rate simply parks threads on the bucket, which looks like a
+        # hang. Cap it at something the limiter can actually feed.
+        if not 1 <= self.edgar_concurrency <= 16:
+            raise ValueError("edgar_concurrency must be in [1, 16]")
 
         return self
 

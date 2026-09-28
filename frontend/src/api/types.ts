@@ -300,3 +300,41 @@ export interface BenchmarkProvenance {
   detail: Record<string, any> | null;
   how_to_rebuild: string;
 }
+
+export interface Page<T> {
+  items: T[];
+  /** Opaque. Pass back as ?cursor= for the next page; null means the end. */
+  next_cursor: string | null;
+  /** Only present when the request asked for it: a COUNT costs a scan. */
+  total: number | null;
+}
+
+export type JobState = "QUEUED" | "RUNNING" | "SUCCEEDED" | "FAILED" | "CANCELLED";
+
+export interface Job {
+  id: string;
+  kind: string;
+  state: JobState;
+  params: Record<string, any>;
+  result: Record<string, any> | null;
+  error: string | null;
+  progress: number;
+  message: string | null;
+  request_id: string | null;
+  created_at: string | null;
+  started_at: string | null;
+  finished_at: string | null;
+  duration_seconds: number | null;
+}
+
+/** RFC 9457 problem details, which is what every error response now is. */
+export interface Problem {
+  type: string;
+  title: string;
+  status: number;
+  code: string;
+  detail: string;
+  instance?: string;
+  request_id?: string;
+  [key: string]: unknown;
+}

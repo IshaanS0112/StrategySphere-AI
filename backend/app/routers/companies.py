@@ -1,18 +1,68 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, status
-from sqlalchemy import select
+from typing import Annotated
 
+from fastapi import APIRouter, Query, status
+from sqlalchemy import func, or_, select
+
+from app import errors
+from app.db.pagination import InvalidCursor, clamp_limit, paginate
 from app.models import Company, Competitor
-from app.routers.deps import CurrentCompany, DbSession
-from app.schemas import CompanyCreate, CompanyOut, CompetitorCreate, CompetitorOut
+from app.routers.deps import AppSettings, CurrentCompany, DbSession
+from app.schemas import (
+    CompanyCreate,
+    CompanyOut,
+    CompetitorCreate,
+    CompetitorOut,
+    Page,
+)
 
 router = APIRouter(prefix="/companies", tags=["companies"])
 
 
-@router.get("", response_model=list[CompanyOut])
-def list_companies(db: DbSession):
-    return list(db.scalars(select(Company).order_by(Company.created_at.desc())))
+@router.get("", response_model=Page[CompanyOut])
+def list_companies(
+    db: DbSession,
+    settings: AppSettings,
+    limit: Annotated[int | None, Query(ge=1, le=500)] = None,
+    cursor: Annotated[str | None, Query(max_length=200)] = None,
+    industry: Annotated[str | None, Query(max_length=100)] = None,
+    entity_key: Annotated[str | None, Query(max_length=120)] = None,
+    q: Annotated[str | None, Query(max_length=200, description="Substring of the name")] = None,
+    with_total: Annotated[bool, Query(description="Also run a COUNT. Costs a scan.")] = False,
+):
+    """Newest first, keyset-paginated, with filters the dashboard actually uses.
+
+    V3 returned every company in one array. That is fine for three case studies
+    and unbounded for anything real.
+    """
+    statement = select(Company)
+    if industry:
+        statement = statement.where(func.lower(Company.industry) == industry.strip().lower())
+    if entity_key:
+        statement = statement.where(Company.entity_key == entity_key)
+    if q:
+        # ILIKE on a name column with no trigram index is a scan. At this table
+        # size that is the right trade; the note is here so the next person
+        # knows it was a decision rather than an oversight.
+        needle = f"%{q.strip().lower()}%"
+        statement = statement.where(
+            or_(func.lower(Company.name).like(needle), func.lower(Company.data_source).like(needle))
+        )
+
+    try:
+        items, next_cursor, total = paginate(
+            db,
+            statement,
+            model=Company,
+            limit=clamp_limit(limit, settings.page_size_default, settings.page_size_max),
+            cursor=cursor,
+            with_total=with_total,
+        )
+    except InvalidCursor as exc:
+        raise errors.invalid_input(str(exc)) from exc
+
+    return Page[CompanyOut](items=items, next_cursor=next_cursor, total=total)
 
 
 @router.post("", response_model=CompanyOut, status_code=status.HTTP_201_CREATED)

@@ -9,8 +9,10 @@ quadrant that no longer matches the grid above it.
 
 from __future__ import annotations
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter
 
+from app import errors
+from app.db import queries
 from app.enums import MarginBasis
 from app.routers.deps import AppSettings, CurrentCompany, DbSession
 from app.schemas import (
@@ -29,48 +31,45 @@ router = APIRouter(prefix="/companies", tags=["analysis"])
 @router.post("/{company_id}/swot-analysis", response_model=SwotAnalysisOut)
 def create_swot_analysis(company: CurrentCompany, db: DbSession, settings: AppSettings):
     if not (company.financial_data or company.market_data or company.qualitative_inputs):
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail=(
-                "This company has no financial data, market data, or qualitative inputs. "
-                "A SWOT grid scored from nothing would be four empty lists presented as "
-                "an analysis."
-            ),
+        raise errors.AppError(
+            errors.INSUFFICIENT_INPUT,
+            "This company has no financial data, market data, or qualitative inputs. "
+            "A SWOT grid scored from nothing would be four empty lists presented as "
+            "an analysis.",
         )
     return analysis_pipeline.run_swot(db, company, settings)
 
 
 @router.get("/{company_id}/swot-analysis", response_model=SwotAnalysisOut)
-def get_swot_analysis(company: CurrentCompany):
-    if not company.swot_analyses:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="No SWOT analysis has been run for this company yet.",
+def get_swot_analysis(company: CurrentCompany, db: DbSession):
+    row = queries.latest_swot(db, company.id)
+    if row is None:
+        raise errors.AppError(
+            errors.NOT_FOUND, "No SWOT analysis has been run for this company yet."
         )
-    return company.swot_analyses[-1]
+    return row
 
 
 @router.post("/{company_id}/market-attractiveness", response_model=MarketAttractivenessOut)
 def create_market_attractiveness(company: CurrentCompany, db: DbSession, settings: AppSettings):
-    if not company.swot_analyses:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail=(
-                "Run the SWOT analysis first. The competitive-strength axis is derived "
-                "from the scored SWOT factors, so there is nothing to plot without it."
-            ),
+    swot_row = queries.latest_swot(db, company.id)
+    if swot_row is None:
+        raise errors.stage_order(
+            "Run the SWOT analysis first. The competitive-strength axis is derived "
+            "from the scored SWOT factors, so there is nothing to plot without it.",
+            needs="swot",
         )
-    return analysis_pipeline.run_attractiveness(db, company, company.swot_analyses[-1], settings)
+    return analysis_pipeline.run_attractiveness(db, company, swot_row, settings)
 
 
 @router.get("/{company_id}/market-attractiveness", response_model=MarketAttractivenessOut)
-def get_market_attractiveness(company: CurrentCompany):
-    if not company.attractiveness_results:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="No market attractiveness result exists for this company yet.",
+def get_market_attractiveness(company: CurrentCompany, db: DbSession):
+    row = queries.latest_matrix(db, company.id)
+    if row is None:
+        raise errors.AppError(
+            errors.NOT_FOUND, "No market attractiveness result exists for this company yet."
         )
-    return company.attractiveness_results[-1]
+    return row
 
 
 @router.post("/{company_id}/pricing-recommendation", response_model=PricingRecommendationOut)
@@ -92,19 +91,17 @@ def create_pricing_recommendation(
         )
     except PricingInputError as exc:
         # A bad price input is the caller's problem, not a server fault.
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)
-        ) from exc
+        raise errors.invalid_input(str(exc)) from exc
 
 
 @router.get("/{company_id}/pricing-recommendation", response_model=PricingRecommendationOut)
-def get_pricing_recommendation(company: CurrentCompany):
-    if not company.pricing_recommendations:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="No pricing recommendation exists for this company yet.",
+def get_pricing_recommendation(company: CurrentCompany, db: DbSession):
+    row = queries.latest_pricing(db, company.id)
+    if row is None:
+        raise errors.AppError(
+            errors.NOT_FOUND, "No pricing recommendation exists for this company yet."
         )
-    return company.pricing_recommendations[-1]
+    return row
 
 
 @router.post("/{company_id}/generate-strategy-report", response_model=StrategyReportOut)
@@ -115,23 +112,21 @@ def generate_strategy_report(company: CurrentCompany, db: DbSession, settings: A
     returns malformed JSON, the templated fallback is persisted instead and the
     response carries ``narrative_source = "template_fallback"``.
     """
-    if not company.swot_analyses or not company.attractiveness_results:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail=(
-                "Run the SWOT analysis and the market attractiveness matrix first. "
-                "The report narrates computed scores; without them there is nothing "
-                "to narrate and the model would be inventing the strategy."
-            ),
+    if queries.latest_swot(db, company.id) is None or queries.latest_matrix(db, company.id) is None:
+        raise errors.stage_order(
+            "Run the SWOT analysis and the market attractiveness matrix first. "
+            "The report narrates computed scores; without them there is nothing "
+            "to narrate and the model would be inventing the strategy.",
+            needs="swot+matrix",
         )
     return analysis_pipeline.run_report(db, company, settings)
 
 
 @router.get("/{company_id}/strategy-report", response_model=StrategyReportOut)
-def get_strategy_report(company: CurrentCompany):
-    if not company.reports:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="No strategy report has been generated for this company yet.",
+def get_strategy_report(company: CurrentCompany, db: DbSession):
+    row = queries.latest_report(db, company.id)
+    if row is None:
+        raise errors.AppError(
+            errors.NOT_FOUND, "No strategy report has been generated for this company yet."
         )
-    return company.reports[-1]
+    return row
