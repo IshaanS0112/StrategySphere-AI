@@ -33,10 +33,17 @@ services:
       # User-Agent with contact details; there is no default and the client
       # refuses to construct without one.
       EDGAR_USER_AGENT: ${EDGAR_USER_AGENT:-}
+      # V3.1. JSON logs by default so they can be shipped; the request id on
+      # each line ties them to the X-Request-ID the API returns.
+      LOG_FORMAT: ${LOG_FORMAT:-json}
+      JOB_WORKERS: ${JOB_WORKERS:-2}
     ports:
       - "8000:8000"
     volumes:
-      - ./data:/app/data:ro
+      # Read-write now: a benchmark rebuild job writes a new table here. The
+      # build writes to a temporary name and renames, so a crash cannot leave
+      # the live table truncated.
+      - ./data:/app/data
     depends_on:
       db:
         condition: service_healthy

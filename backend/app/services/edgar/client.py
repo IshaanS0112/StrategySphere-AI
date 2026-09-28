@@ -88,7 +88,20 @@ def validate_user_agent(raw: str | None) -> str:
 
 
 class TokenBucket:
-    """Classic token bucket: ``rate`` tokens per second, burst capped at ``rate``.
+    """Rate limiter with an explicit, and by default absent, burst allowance.
+
+    **The burst is the part that was wrong.** A classic token bucket seeded
+    with ``capacity == rate`` lets ``rate`` requests fire instantly and then
+    refills at ``rate``, so the worst one-second window contains up to
+    ``2 x rate``. Measured at a configured 20/s: 39 requests inside one second.
+    That behaviour was in V3 too; serial fetching just made it hard to reach,
+    because each request had to return before the next was issued.
+
+    For a public API with a published ceiling, "twice the configured rate, but
+    only briefly" is not a defence. ``burst`` therefore defaults to 1 - strict
+    pacing, one request every ``1/rate`` seconds, so no one-second window can
+    hold more than ``rate + 1``. A caller who genuinely wants burst capacity
+    has to ask for it and say how much.
 
     **Thread-safe**, which V3's version was not. That did not matter while
     every fetch was serial; it matters the moment several workers share one
@@ -106,14 +119,17 @@ class TokenBucket:
         self,
         rate_per_second: float,
         *,
+        burst: float = 1.0,
         clock: Callable[[], float] = time.monotonic,
         sleep: Callable[[float], None] = time.sleep,
     ) -> None:
         if rate_per_second <= 0:
             raise EdgarConfigError("rate_per_second must be positive")
+        if burst < 1:
+            raise EdgarConfigError("burst must be at least 1")
         self.rate = float(rate_per_second)
-        self.capacity = float(rate_per_second)
-        self._tokens = float(rate_per_second)
+        self.capacity = float(burst)
+        self._tokens = float(burst)
         self._clock = clock
         self._sleep = sleep
         self._last = clock()
@@ -183,6 +199,7 @@ class EdgarClient:
         user_agent: str | None,
         cache_dir: str | Path,
         requests_per_second: float = 5.0,
+        burst: float = 1.0,
         timeout_seconds: float = 30.0,
         offline: bool = False,
         concurrency: int = 1,
@@ -198,7 +215,7 @@ class EdgarClient:
         self.cache_dir = Path(cache_dir)
         self.cache_dir.mkdir(parents=True, exist_ok=True)
         self.timeout_seconds = float(timeout_seconds)
-        self.bucket = TokenBucket(requests_per_second, clock=clock, sleep=sleep)
+        self.bucket = TokenBucket(requests_per_second, burst=burst, clock=clock, sleep=sleep)
         self._transport = transport
         self.concurrency = max(1, int(concurrency))
         self._stats_lock = threading.Lock()

@@ -53,6 +53,10 @@ logger = logging.getLogger(__name__)
 SOURCE_STATEMENT = "SEC EDGAR XBRL frames API, data.sec.gov"
 
 
+class BenchmarkBuildError(RuntimeError):
+    """The build cannot produce a table worth publishing."""
+
+
 @dataclass
 class MetricCoverage:
     """Resolution outcome for one metric across the whole filer universe."""
@@ -302,6 +306,25 @@ def build_benchmark_table(
         say(f"  {spec.key}: {coverage.resolved} resolved, {coverage.dropped} dropped")
 
     universe = sorted({cik for values in metric_values.values() for cik in values})
+
+    # A table with no companies behind it is not a benchmark table, and writing
+    # one is worse than failing: it would be a well-formed file of nothing that
+    # the SWOT engine then loads and scores against. This fires when every
+    # frame came back unavailable - an offline build against a cold cache, a
+    # period the API has no data for, or a network that is down - all of which
+    # previously produced a SUCCESS and an empty file.
+    if not universe:
+        unavailable = [
+            frame.error or "no data"
+            for resolved in cache._store.values()          # noqa: SLF001
+            for frame in resolved.frames
+            if not frame.available
+        ]
+        raise BenchmarkBuildError(
+            f"No company resolved any metric for {period}. Every frame request came "
+            f"back empty or unavailable, so there is nothing to take a median of. "
+            f"First reason: {unavailable[0] if unavailable else 'unknown'}"
+        )
 
     # --- the SIC sample ----------------------------------------------------
     # Ranked by revenue descending so the sample is deterministic and its bias

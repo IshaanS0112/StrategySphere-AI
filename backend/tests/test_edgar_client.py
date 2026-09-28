@@ -55,7 +55,7 @@ class TestUserAgentEnforcement:
 
 
 class TestRateLimiting:
-    def test_a_burst_is_capped_at_the_configured_rate(self):
+    def test_there_is_no_burst_by_default(self):
         now = [0.0]
         slept: list[float] = []
 
@@ -67,11 +67,31 @@ class TestRateLimiting:
             now[0] += seconds
 
         bucket = TokenBucket(5.0, clock=clock, sleep=sleep)
-        # The first five are free (full bucket); the sixth must wait.
-        for _ in range(5):
-            assert bucket.take() == 0.0
-        assert bucket.take() == pytest.approx(0.2, abs=1e-9)
-        assert slept == [pytest.approx(0.2)]
+        # One free token, then strict pacing at 1/rate. A bucket seeded with
+        # `rate` tokens would let five fire instantly and then refill at five a
+        # second, putting up to TEN inside one second at a configured five -
+        # which is not a defensible reading of a published per-second limit.
+        assert bucket.take() == 0.0
+        for _ in range(4):
+            assert bucket.take() == pytest.approx(0.2, abs=1e-9)
+        assert slept == [pytest.approx(0.2)] * 4
+
+    def test_a_burst_can_be_asked_for_explicitly(self):
+        now = [0.0]
+
+        def clock() -> float:
+            return now[0]
+
+        def sleep(seconds: float) -> None:
+            now[0] += seconds
+
+        bucket = TokenBucket(5.0, burst=3, clock=clock, sleep=sleep)
+        assert [bucket.take() for _ in range(3)] == [0.0, 0.0, 0.0]
+        assert bucket.take() > 0.0
+
+    def test_a_burst_below_one_is_refused(self):
+        with pytest.raises(EdgarConfigError):
+            TokenBucket(5.0, burst=0)
 
     def test_tokens_refill_with_elapsed_time(self):
         now = [0.0]
@@ -79,7 +99,7 @@ class TestRateLimiting:
         def clock() -> float:
             return now[0]
 
-        bucket = TokenBucket(5.0, clock=clock, sleep=lambda s: None)
+        bucket = TokenBucket(5.0, burst=5, clock=clock, sleep=lambda s: None)
         for _ in range(5):
             bucket.take()
         now[0] += 1.0          # a full second buys the whole bucket back
@@ -115,8 +135,8 @@ class TestRateLimiting:
         )
         for concept in ("GrossProfit", "Revenues", "NetIncomeLoss", "OperatingIncomeLoss"):
             client.frames(concept, period="CY2024")
-        # Capacity 2, so two free and two waits of half a second each.
-        assert client.stats.seconds_waiting == pytest.approx(1.0)
+        # One free token, then three waits of half a second at 2/s.
+        assert client.stats.seconds_waiting == pytest.approx(1.5)
 
 
 class TestDiskCache:
@@ -231,3 +251,108 @@ class TestEndpointUrls:
             ).read_text()
         )
         assert on_disk == payload
+
+
+class TestConcurrency:
+    """Concurrency must overlap latency without ever raising the outbound rate.
+
+    This is the test that matters for compliance. The whole justification for
+    fetching in parallel is that the token bucket, not the thread count,
+    decides how fast requests leave this process - so that claim is asserted
+    rather than assumed.
+    """
+
+    def test_the_rate_is_never_exceeded_under_concurrency(self, tmp_path):
+        import threading
+        import time as real_time
+
+        stamps: list[float] = []
+        lock = threading.Lock()
+
+        def transport(_url, _headers, _timeout):
+            with lock:
+                stamps.append(real_time.monotonic())
+            real_time.sleep(0.02)
+            return b'{"data": []}'
+
+        client = EdgarClient(
+            user_agent="Jane Doe jane@example.com",
+            cache_dir=tmp_path,
+            requests_per_second=20.0,
+            concurrency=8,
+            transport=transport,
+        )
+        urls = [f"https://data.sec.gov/submissions/CIK{i:010d}.json" for i in range(40)]
+        client.get_many(urls)
+
+        assert len(stamps) == 40
+        # The bucket allows a burst of `rate` and then paces. Check the tail,
+        # after the initial burst is spent: no one-second window may contain
+        # more than the configured rate.
+        ordered = sorted(stamps)
+        window = 1.0
+        for index, start in enumerate(ordered):
+            in_window = sum(1 for s in ordered[index:] if s - start < window)
+            assert in_window <= 21, (
+                f"{in_window} requests inside one second at index {index}; "
+                "the limiter was bypassed by concurrency"
+            )
+
+    def test_every_url_is_fetched_exactly_once(self, tmp_path, recorded_transport):
+        client = EdgarClient(
+            user_agent="Jane Doe jane@example.com",
+            cache_dir=tmp_path,
+            requests_per_second=1000.0,
+            concurrency=4,
+            transport=recorded_transport,
+        )
+        urls = [
+            "https://data.sec.gov/api/xbrl/frames/us-gaap/GrossProfit/USD/CY2024.json",
+            "https://data.sec.gov/api/xbrl/frames/us-gaap/Revenues/USD/CY2024.json",
+            "https://data.sec.gov/api/xbrl/frames/us-gaap/NetIncomeLoss/USD/CY2024.json",
+        ]
+        results = client.get_many(urls)
+        assert set(results) == set(urls)
+        assert sorted(recorded_transport.calls) == sorted(urls)
+
+    def test_one_failure_does_not_abandon_the_pass(self, tmp_path, recorded_transport):
+        # One 404 among fifteen hundred companies is data about that company,
+        # not a reason to stop classifying the other fourteen hundred.
+        client = EdgarClient(
+            user_agent="Jane Doe jane@example.com",
+            cache_dir=tmp_path,
+            requests_per_second=1000.0,
+            concurrency=4,
+            transport=recorded_transport,
+        )
+        good = "https://data.sec.gov/api/xbrl/frames/us-gaap/GrossProfit/USD/CY2024.json"
+        bad = "https://data.sec.gov/api/xbrl/frames/us-gaap/NoSuchTag/USD/CY2024.json"
+        errors_seen: list[Exception] = []
+
+        results = client.get_many(
+            [good, bad],
+            on_result=lambda _u, _p, e: errors_seen.append(e) if e else None,
+        )
+        assert set(results) == {good}
+        assert len(errors_seen) == 1
+
+    def test_submissions_many_keys_by_cik(self, edgar_client):
+        payloads = edgar_client.submissions_many([1000, 1001, 1002])
+        assert set(payloads) == {1000, 1001, 1002}
+        assert payloads[1000]["cik"] == "1000"
+
+    def test_stats_survive_concurrent_updates(self, tmp_path):
+        client = EdgarClient(
+            user_agent="Jane Doe jane@example.com",
+            cache_dir=tmp_path,
+            requests_per_second=1000.0,
+            concurrency=8,
+            transport=lambda *_a, **_k: b'{"data": []}',
+        )
+        urls = [f"https://data.sec.gov/submissions/CIK{i:010d}.json" for i in range(60)]
+        client.get_many(urls)
+        # Unlocked += on a shared counter loses updates under threads. It would
+        # not crash; it would just quietly under-report what this process did
+        # to a public API, which is the number compliance rests on.
+        assert client.stats.requests_made == 60
+        assert client.stats.cache_writes == 60

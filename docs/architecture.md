@@ -634,3 +634,180 @@ that asserts a no-distribution run reproduces the stored matrix exactly.
 - **The entropy discount is steep.** At 0.82 bits a unit's priority is roughly
   halved. That is a deliberate choice and a defensible one, but it is a choice,
   and a different committee would pick a different curve.
+
+
+---
+
+# V3.1 — the service layer
+
+V1 to V3 grew the engines. The service around them stayed the thin thing that
+called them: every stage read a whole collection to use one row, there was no
+way to run work that did not fit in a request, a log line could not be tied to
+the request that produced it, every error was prose, and `GET /companies`
+returned the table.
+
+Nothing in this release changes a single computed figure. The doctrine is
+untouched: the engines are still pure functions over dicts, the LLM still only
+narrates a frozen context, and every stored result still carries a
+`calculation_basis` you can recompute it from.
+
+## The N+1, and what it cost
+
+Since V1, "the latest result" was `company.swot_analyses[-1]`. That is a full
+collection load — `SELECT` with no `LIMIT`, an ORM object per row, a
+kilobyte-scale `calculation_basis` decoded into each one — to use the last
+element. The timeline and the portfolio allocator did it inside a loop, and the
+allocator did it twice per member (matrix, then uncertainty).
+
+`backend/app/db/queries.py` replaces both shapes: `latest_*` issues
+`ORDER BY <ts> DESC LIMIT 1`, and `latest_for_many` resolves a whole set with a
+window function. Measured by `backend/scripts/bench_queries.py` on 12
+companies × 50 stored runs:
+
+| | V3 | V3.1 |
+|---|---|---|
+| Latest result, one company | 1 query, **50 ORM rows** | 1 query, **1 row** |
+| Timeline over 12 periods | **13 queries, 600 rows** | **3 queries, 12 rows** |
+| Benchmark table, 200 loads | 17.1 ms | **0.9 ms** (18.7×) |
+
+Migration `0004` adds the `(company_id, <timestamp> DESC)` composites those
+reads need, so the database walks an index backwards and stops at the first row
+instead of sorting every run a company has ever stored.
+
+The benchmark script stays in the repository as a regression guard: a refactor
+that reintroduces a lazy collection load shows up as the query count going back
+up.
+
+## Background jobs
+
+V3 answered `POST /benchmarks/build` with a 501 and a CLI command. The
+reasoning was right — hundreds of rate-limited calls over several minutes do
+not belong inside a request — and the conclusion was wrong. The answer is
+`202 Accepted` with a job id.
+
+`app/services/jobs.py` is an in-process thread pool whose **source of truth is
+a row, not a future**, so a restart does not lose the record of what ran.
+Workers heartbeat; a reaper fails any job whose heartbeat has gone stale, so a
+crashed worker cannot leave a row `RUNNING` forever. Cancellation is
+cooperative, because killing a thread mid-write is how a benchmark file ends up
+half written — and the build now writes to a temporary name and renames, which
+is atomic on one filesystem. Identical jobs are deduplicated, because two
+concurrent rebuilds writing one file is a corrupt file.
+
+What it is not: jobs do not survive a restart mid-flight (they are reaped and
+marked `FAILED` on the next boot) and they do not spread across workers. That
+is the honest trade for zero new infrastructure. `submit()` is the seam where
+Celery or RQ would go.
+
+## Observability
+
+Request ids are taken from an inbound `X-Request-ID` when a proxy already
+assigned one, and generated otherwise. The id is echoed on the response, folded
+into every log line, and written into the `request_id` field of every error —
+which is what turns a user's screenshot of a failure into something findable.
+
+Logs are JSON by default (`LOG_FORMAT=text` for a terminal). `/metrics` serves
+Prometheus text exposition with request counts and a latency histogram,
+labelled by **route template** rather than path: a label per company id is an
+unbounded cardinality explosion, which is the classic way to take a metrics
+backend down with your own instrumentation. The counters are per-process and
+the endpoint says so.
+
+`/health` and `/ready` are now different things. A liveness probe that checks
+the database restarts the API whenever the database hiccups, converting a
+recoverable dependency failure into an outage of its own making. `/health`
+touches nothing; `/ready` checks the connection, the migrated schema, the
+benchmark table and the job runner, and reports each separately so a failing
+probe names its cause.
+
+## Errors
+
+Every deliberate failure is an `AppError` with a stable machine code, served as
+RFC 9457 `application/problem+json`. FastAPI's own `HTTPException` and
+validation failures are wrapped into the same shape, so a client parses one
+document rather than two. The prose `detail` is preserved byte for byte —
+several of those explanations took a bug to write, and the frontend reads it.
+
+## Pagination
+
+`GET /companies` returned every row. It is now keyset-paginated over
+`(created_at, id)` with industry, entity and substring filters.
+
+Keyset rather than offset for two reasons. `OFFSET` re-scans and discards, so
+page 50 costs fifty times page 1. And a row inserted while a client pages
+shifts every later page, duplicating one row and skipping another — a test
+asserts that specifically does not happen here. `total` is opt-in, because a
+`COUNT` on every page is a scan to render a number almost nobody reads.
+
+## Bugs found in V3.1
+
+**The rate limiter allowed roughly twice the configured rate.** A token bucket
+seeded with `capacity == rate` lets `rate` requests fire instantly and then
+refills at `rate`, so the worst one-second window holds up to `2 × rate`.
+Measured at a configured 20/s: **39 requests inside one second**. The behaviour
+was in V3 too — serial fetching just made it hard to reach, because each
+request had to return before the next was issued. For a public API with a
+published ceiling, "twice the rate, but only briefly" is not a defence. `burst`
+now defaults to 1, which is strict pacing; a caller who wants burst capacity
+has to ask for it and say how much. Re-measured: 21 in any one-second window at
+a configured 20/s, identical serial and concurrent.
+
+**The bucket was not thread-safe.** Two threads could read `_tokens` before
+either decremented it and both proceed. It did not matter while every fetch was
+serial and would have silently exceeded the SEC rate by exactly the concurrency
+the moment it was not. The token is now reserved under the lock *before*
+sleeping, so concurrent callers queue for distinct slots.
+
+**`cancel()` raced the worker and could overwrite its state.** It read
+`row.state` from the caller's session — which can be a cached `QUEUED` while
+the worker has already written `RUNNING` from another connection — took the
+"never started" branch, and wrote `CANCELLED` from a second writer. The
+recorded outcome depended on thread timing. Fixed with an explicit ownership
+rule: whoever runs the job writes its terminal state, and a cancel of a claimed
+job only sets the flag. Found by its own test.
+
+**An offline build with a cold cache reported success and wrote an empty
+table.** Every frame came back unavailable, the builder took medians of
+nothing, and the job finished `SUCCEEDED` with a well-formed file containing no
+companies — which the SWOT engine would then have loaded and scored against. A
+build that resolves no companies now fails, and writes nothing. Found by
+running the job for real against a wrong cache directory.
+
+**The unlocked stats counters under-reported.** `self.stats.requests_made += 1`
+from eight threads loses updates. It would not crash; it would quietly
+understate what this process did to a public API, which is the number
+compliance rests on.
+
+## Measured: does concurrency help?
+
+It depends which regime you are in, and the first measurement contradicted the
+justification I had written for it.
+
+Serial wall time per request is `latency + max(0, 1/rate − latency)`. So
+concurrency only buys anything when **latency exceeds the limiter's spacing**.
+At the default 5 req/s that spacing is 200 ms, and `data.sec.gov` usually
+answers faster than that:
+
+| Regime | Serial | concurrency=4 |
+|---|---|---|
+| 150 ms latency, 5/s (200 ms gap) | 20.0 s | **20.0 s — 1.00×** |
+| 600 ms latency, 5/s | 60.5 s | **20.4 s — 2.96×** |
+
+**At the default configuration against a healthy SEC, concurrency is worth
+nothing.** It pays when the upstream is slow — which it is under load, and
+which is exactly when a build would otherwise crawl at 1.65 req/s against a
+5 req/s allowance. It is kept on by default as free insurance: zero cost in the
+fast regime, 3× in the slow one, and the outbound rate never exceeds the cap in
+either.
+
+## Deliberate limitations, still
+
+- **The caches and the job runner are per-process.** Behind several workers
+  each has its own. That is correct for immutable derived data and wrong for
+  anything shared and mutable; where that stops being true the answer is Redis,
+  and `cache.py` / `jobs.submit()` are the seams to put it behind.
+- **Still no authentication.** Unchanged, and still correct for a single-user
+  analysis tool. Note that `/metrics` and `/jobs` are unauthenticated too, which
+  is fine on a laptop and is not what you would ship to a network.
+- **`?q=` is a `LIKE` scan.** At this table size that is the right trade. The
+  note is in the code so the next person knows it was a decision.

@@ -43,6 +43,18 @@ I also wanted the project to survive one specific question, which is the questio
 13. **Portfolio capital allocation.** N business units on one grid, competing for one budget, under floor constraints with harvest units funding growth. This is what McKinsey built the nine-box for.
 14. **The validation, actually run.** 2,979 company-years across two three-year windows, against a revenue-growth-only baseline, with the answer published whichever way it went. [It went badly.](docs/validation_results.md)
 
+### Added in V3.1 — the service layer
+
+Nothing here changes a computed figure. It is the API around the engines
+catching up with them.
+
+15. **A read layer that does not load what it does not use.** Every stage read a whole collection to use one row, and the timeline and allocator did it in a loop. Now `ORDER BY … LIMIT 1` and a window function: the timeline went from **13 queries and 600 ORM rows to 3 queries and 12**, with composite indexes to match.
+16. **Background jobs.** `POST /benchmarks/build` was a 501 pointing at a CLI. It is now `202 Accepted` with a job id, a worker pool, progress, cooperative cancellation, heartbeats and a reaper — so a crashed worker cannot leave a job `RUNNING` for ever.
+17. **Observability.** Request ids threaded from the inbound header through every log line and into every error body, JSON logs, and Prometheus metrics at `/metrics` labelled by route template.
+18. **An error taxonomy.** Every failure has a stable machine code and is served as RFC 9457 `problem+json` — including the ones FastAPI raises itself, so there is one shape to parse. The prose `detail` is unchanged.
+19. **Caching and conditional requests.** The benchmark table was parsed from disk on every SWOT run; it is now cached on `(path, mtime, size)`, which is **18.7× faster** and still picks up a rebuild with no restart. `/methodology` serves an ETag and answers a matching request with `304`.
+20. **Keyset pagination and filters** on `/companies`, which previously returned the table.
+
 ---
 
 ## The line between computed and narrated
@@ -155,7 +167,7 @@ And the allocation over all three cases, budget 900:
 
 The binding constraint is reported separately from the ranked axis list on purpose. On `contested_retail` every attractiveness axis is unreachable, and on `premium_saas` the constraint is the strength axis — which is not in that list at all. Reading `axes[0]` as "the thing to worry about" gave the opposite of the truth, and was a live bug until an end-to-end run surfaced it.
 
-`pytest`: **425 tests**, no database and no network required — including the EDGAR tests, which run the real client against recorded-shape fixtures with an injected transport.
+`pytest`: **510 tests**, no database and no network required — including the EDGAR tests, which run the real client against recorded-shape fixtures with an injected transport.
 
 ---
 
@@ -222,7 +234,7 @@ quietly reaching out.
 cd backend
 pip install -r requirements-dev.txt
 cp .env.example .env          # set DATABASE_URL, or use SQLite for a quick look
-pytest                        # 425 tests, no database and no network needed
+pytest                        # 510 tests, no database and no network needed
 
 # V2 owns its schema with Alembic; the app no longer creates tables itself.
 export DATABASE_URL="sqlite:///./local.db"
@@ -248,7 +260,7 @@ cd frontend && npm ci && npm run dev     # proxies /api to :8000
 ### Verifying an install
 
 ```bash
-cd backend && pytest                              # 425 passed
+cd backend && pytest                              # 510 passed
 curl localhost:8000/health                        # {"status":"ok"}
 python backend/scripts/load_case_study.py \
     data/case_studies/premium_saas.json --api http://localhost:8000 --run-all
@@ -287,7 +299,18 @@ POST   /portfolios  ·  GET /portfolios  ·  GET /portfolios/{id}
 POST   /portfolios/{id}/allocate                Allocate a budget across the units
 GET    /portfolios/{id}/allocations             Stored runs
 GET    /benchmarks/provenance                   What the live table is, and where it came from
+
+GET    /health  ·  GET /ready                   Liveness, and dependency-by-dependency readiness
+GET    /metrics                                 Prometheus text exposition
+POST   /benchmarks/build                        202 + job id; rebuild from SEC filings
+POST   /validation/panels                       202 + job id; assemble a panel from filings
+GET    /jobs  ·  GET /jobs/{id}                 Poll a background job
+POST   /jobs/{id}/cancel                        Cooperative cancellation
 ```
+
+`GET /companies` is keyset-paginated: `?limit=&cursor=&industry=&q=&with_total=`.
+Every error is RFC 9457 `application/problem+json` with a stable `code`, and
+carries the `X-Request-ID` back so a failure can be found in the logs.
 
 Each `POST` has a matching `GET` returning the latest stored result. Stage ordering is enforced with `409` rather than a silent recompute — the matrix must be built on the SWOT grid the user actually saw.
 
@@ -306,6 +329,36 @@ HHI over the competitor set, classified on DOJ/FTC 2023 bands, adjusted by price
 
 **"How does the pricing engine derive its number?"**
 Cost-plus anchor blended 50/50 with the competitor mean, multiplied by a value-adjustment factor from the shared-feature gap, capped at ±30%, floored at cost. The realised margin is reported alongside, because the blended price frequently does *not* deliver the target margin and hiding that would be the whole problem.
+
+**"What happens when the framework's own reads get slow?"**
+They were already slow and nobody had measured them. Every stage read *the
+latest* result as `collection[-1]`, which loads every row a company has ever
+stored — kilobyte-scale JSON per row — to use one. The timeline and the
+portfolio allocator did it inside a loop, which is a plain N+1. `backend/scripts/bench_queries.py`
+reproduces the before and after: 13 queries and 600 ORM rows down to 3 and 12
+on a twelve-period timeline. The script stays in the repo so a refactor that
+reintroduces the lazy load shows up as the query count going back up.
+
+**"You told me building the benchmark table was a CLI job. Why is it an endpoint now?"**
+Because the V3 answer was half right. Doing minutes of rate-limited outbound
+calls *inside a request* is a timeout with a body — that part stands. But "run
+this by hand on the server" is not a feature either. It is now `202 Accepted`
+with a job id and a `Location` header, and the job's state lives in a row
+rather than a future, so a restart does not lose the record of what ran. The
+reaper is the part that makes it trustworthy: a job whose heartbeat goes stale
+is failed rather than left `RUNNING` for ever.
+
+**"Does fetching EDGAR in parallel not break the rate limit you made a point of?"**
+It does not, and measuring that is how I found two bugs. The token bucket is
+shared, so threads queue for slots and the outbound rate is identical to the
+serial case. Measuring it also showed the limiter had been allowing roughly
+**twice** the configured rate all along — a bucket seeded with `capacity ==
+rate` lets `rate` fire instantly and then refills at `rate`, so a one-second
+window can hold `2 × rate`. At a configured 20/s it passed 39 in a second.
+Burst now defaults to 1. And the honest answer on the speedup: **at the default
+5 req/s against a healthy SEC, concurrency buys nothing** — the limiter
+dominates. It is worth 3× only when the upstream is slow. Both regimes are in
+the benchmark output.
 
 **"Where does the data come from?"**
 Company figures: whatever you supply, recorded in a required `data_source` field. The shipped cases are labelled composites. Benchmarks: the SEC's XBRL frames API at `data.sec.gov` — official, public, no keys, JSON, published for developers. No scraping, ever; the client refuses any host outside `data.sec.gov`.
@@ -344,13 +397,17 @@ backend/app/services/    swot_engine · market_structure · attractiveness_matri
                          porters_engine · sensitivity · scenario_engine
                          timeline · validation · uncertainty · portfolio
 backend/app/services/edgar/  client · concepts · frames · sic · benchmark_builder
+backend/app/services/    cache · jobs · job_tasks
+backend/app/db/          session · queries (the read layer) · pagination
+backend/app/            errors (RFC 9457 taxonomy) · obs (ids, logs, metrics)
 backend/app/{models,schemas,routers,db}/
 backend/alembic/         0001 V1 baseline · 0002 V2 periods, porters, scenarios
                          0003 V3 uncertainty, portfolios, allocation runs
-backend/tests/           425 tests, engine tests need no database or network
+                         0004 V3.1 jobs, and the indexes the read layer needs
+backend/tests/           510 tests, engine tests need no database or network
 backend/scripts/         load_case_study.py · run_validation.py
                          build_benchmarks.py · build_edgar_panel.py
-                         run_edgar_validation.py
+                         run_edgar_validation.py · bench_queries.py
 frontend/src/            SWOTGrid · AttractivenessMatrix · PricingView · ReportView
                          PortersView · SensitivityPanel · ScenarioPanel · TimelineView
                          UncertaintyPanel · PortfolioGrid · PortfolioView

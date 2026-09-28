@@ -23,3 +23,8 @@ data/benchmarks/*.json
 
 # tsc --build leaves this behind; it is a local cache, not source.
 tsconfig.tsbuildinfo
+
+# A job started with a relative EDGAR_CACHE_DIR or --out resolves against the
+# process working directory, which for uvicorn is backend/. Output written
+# there is an artifact of where the server was started, not source.
+backend/data/

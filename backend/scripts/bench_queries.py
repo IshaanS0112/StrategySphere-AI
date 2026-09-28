@@ -203,6 +203,58 @@ def main() -> int:
     if cached > 0:
         print(f"  speedup                              {uncached / cached:>7.1f}x")
 
+    # --- EDGAR fetch concurrency -----------------------------------------
+    # Simulated latency rather than live requests: the point is a reproducible
+    # number, and it would be rude to hammer a public API to produce one for a
+    # README. 150 ms is the middle of what data.sec.gov actually returns.
+    # Two latency regimes, because the honest answer depends on which one you
+    # are in and the first measurement of this contradicted the justification
+    # written above it.
+    #
+    # Serial wall time per request is (latency + gap), where gap is whatever
+    # the limiter still owes after the request returned: max(0, 1/rate -
+    # latency). So concurrency only buys anything when LATENCY EXCEEDS the
+    # limiter's spacing. At the default 5 req/s that spacing is 200 ms, and
+    # data.sec.gov usually answers faster than that - so the default
+    # configuration is already limiter-bound and concurrency is worth nothing.
+    from app.services.edgar.client import EdgarClient
+
+    urls = [f"https://data.sec.gov/submissions/CIK{i:010d}.json" for i in range(1, 101)]
+
+    def run(latency: float, rate: float, concurrency: int) -> float:
+        def transport(_url, _headers, _timeout):
+            time.sleep(latency)
+            return b'{"data": []}'
+
+        with tempfile.TemporaryDirectory() as cache_dir:
+            client = EdgarClient(
+                user_agent="Bench bench@example.com",
+                cache_dir=cache_dir,
+                requests_per_second=rate,
+                concurrency=concurrency,
+                transport=transport,
+            )
+            started = time.perf_counter()
+            client.get_many(urls)
+            return time.perf_counter() - started
+
+    for latency, rate, note in (
+        (0.15, 5.0, "limiter-bound: 150 ms latency under a 200 ms gap"),
+        (0.60, 5.0, "latency-bound: 600 ms latency over a 200 ms gap"),
+    ):
+        print(f"\nEDGAR fetch: 100 requests at {rate:g}/s, {latency * 1000:.0f} ms latency")
+        print(f"  ({note})")
+        baseline = None
+        for concurrency in (1, 4, 8):
+            elapsed = run(latency, rate, concurrency)
+            baseline = baseline or elapsed
+            label = "V3  serial" if concurrency == 1 else f"V3.1 concurrency={concurrency}"
+            print(
+                f"  {label:<34} {elapsed:>6.1f} s   {baseline / elapsed:>4.2f}x   "
+                f"{100 / elapsed:>5.2f} req/s outbound"
+            )
+    print("\n  The outbound rate never exceeds the configured limit in any row above.")
+
     return 0
 
 

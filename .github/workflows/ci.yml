@@ -51,6 +51,21 @@ jobs:
           python tests/fixtures/edgar/make_fixtures.py
           git diff --exit-code -- tests/fixtures/edgar
 
+      - name: OpenAPI schema is generatable
+        # A response_model that no longer matches its handler fails here rather
+        # than at the first request from a generated client.
+        env:
+          DATABASE_URL: sqlite:///./openapi.db
+        run: |
+          python -c "
+          from app.main import app
+          import json
+          schema = app.openapi()
+          print(len(schema['paths']), 'paths documented')
+          assert '/jobs/{job_id}' in schema['paths']
+          assert '/metrics' not in schema['paths'], 'metrics is include_in_schema=False'
+          "
+
       - name: No test opens a socket
         # The whole EDGAR test suite injects its transport. A test that reaches
         # data.sec.gov from CI would be both flaky and rude, so the absence of
@@ -58,6 +73,12 @@ jobs:
         run: |
           ! grep -rn "urlopen\|requests.get\|httpx.get" tests/ \
             || (echo "a test appears to make a real HTTP call" && exit 1)
+
+      - name: Read layer has not regressed into an N+1
+        # The benchmark prints query and ORM-row counts for the old and new
+        # read paths. A refactor that reintroduces a lazy collection load shows
+        # up here rather than as a slow page six months later.
+        run: python scripts/bench_queries.py --runs 10 --companies 6
 
       - name: Migrations apply and roll back cleanly
         # A migration that cannot be reversed is a migration you cannot deploy

@@ -314,3 +314,31 @@ class TestDeterminismAndRequestDiscipline:
         )
         assert result.table["_default"]["gross_margin_pct"] > 0
         assert result.provenance["sectors_published"] == []
+
+
+class TestEmptyBuildIsRefused:
+    """A build that resolves nothing must fail, not write an empty table.
+
+    Found by running the job against an offline client with a cold cache: every
+    frame came back unavailable, the builder happily took medians of nothing,
+    and the job reported SUCCEEDED with a well-formed file containing no
+    companies. The SWOT engine would then have loaded that file and scored
+    against it.
+    """
+
+    def test_an_offline_build_with_a_cold_cache_fails_loudly(self, tmp_path):
+        from app.services.edgar.benchmark_builder import BenchmarkBuildError
+        from app.services.edgar.client import EdgarClient
+
+        cold = EdgarClient(user_agent=None, cache_dir=tmp_path / "empty", offline=True)
+        with pytest.raises(BenchmarkBuildError) as exc:
+            build_benchmark_table(cold, period="CY2024", min_sector_n=10, sic_lookup_limit=0)
+        assert "nothing to take a median of" in str(exc.value)
+
+    def test_a_period_with_no_frames_fails_rather_than_publishing_zero(self, edgar_client):
+        from app.services.edgar.benchmark_builder import BenchmarkBuildError
+
+        with pytest.raises(BenchmarkBuildError):
+            build_benchmark_table(
+                edgar_client, period="CY1990", min_sector_n=10, sic_lookup_limit=0
+            )
