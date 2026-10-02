@@ -29,7 +29,7 @@ export class ApiError extends Error {
     message: string,
     readonly status: number,
     readonly detail?: unknown,
-    /** Stable machine code from the problem document, e.g. "STAGE_ORDER". */
+    /** Stable machine code from the problem document, e.g. */
     readonly code?: string,
     /** Quote this in a bug report; it ties the failure to the server's logs. */
     readonly requestId?: string,

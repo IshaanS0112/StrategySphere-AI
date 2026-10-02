@@ -1,36 +1,5 @@
 #!/usr/bin/env python3
-"""Assemble a real validation panel from SEC filings, and score it for real.
-
-    export EDGAR_USER_AGENT="Your Name you@example.com"
-    python backend/scripts/build_edgar_panel.py --scoring-period CY2020 --horizon 3 \
-        --out data/validation/edgar_panel_CY2020_CY2023.json
-
-V2 built a backtest harness and never ran it on real data. This is the script
-that produces the data to run it on. Every company is scored **through the real
-pipeline** — the same SWOT engine, the same HHI-derived intensity, the same
-GE-McKinsey weighted sum — so the panel measures this system rather than a
-reimplementation of it.
-
-**The sector is the market.** A company needs market-level inputs (growth, size,
-industry margin, competitive intensity) that no single filing contains. They are
-computed from the company's own SIC sector inside this dataset: the sector's
-median revenue growth, the sum of its filers' revenue, the sector's median
-operating margin, and the HHI over revenue shares within it. That makes every
-market input a computed figure rather than an analyst's guess — and makes each
-company's SWOT benchmark the median of its actual sector peers, which is the
-peer-set path the engine has always preferred.
-
-Two things that are honestly wrong with this construction, both stated in the
-output and in docs/validation_results.md rather than buried:
-
-1. **Look-ahead bias.** Facts for CY2020 are filed in early 2021, so a score
-   "as at 2020" uses information that was not public until months later. This
-   biases the result TOWARD the model looking good. Filing-date-aware assembly
-   is the fix and is scoped as V4.
-2. **Sector shares are shares of SEC filers**, not of a real market. Private
-   and foreign competitors are absent, so every HHI here is an overestimate of
-   concentration.
-"""
+"""Assemble a real validation panel from SEC filings, and score it for real."""
 
 from __future__ import annotations
 
@@ -43,9 +12,7 @@ from statistics import median
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 MIN_SECTOR_PEERS = 8
-# Cap on peers passed into one company's scoring run. Deterministic (largest by
-# revenue), and only bounds the cost of the median - it does not change which
-# sector aggregates are computed.
+# Cap on peers passed into one company's scoring run.
 MAX_PEERS_PER_COMPANY = 60
 
 

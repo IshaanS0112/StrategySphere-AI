@@ -1,25 +1,4 @@
-"""The XBRL frames API, reduced to ``{cik: fact}``.
-
-    https://data.sec.gov/api/xbrl/frames/us-gaap/{Concept}/{Unit}/CY{YYYY}.json
-
-One request returns one fact for every entity that reported that concept for
-that period — which is what makes a sector median affordable. The alternative,
-``companyfacts`` per company, is one request each and would take hours at a
-compliant rate.
-
-Two frame-specific hazards are handled here rather than left to the caller.
-
-**Duplicate CIKs.** A frame can carry more than one row for the same entity
-(restatements, amended filings). The last row wins, deterministically, and the
-collision is counted rather than silently resolved.
-
-**Unit and period must match across a ratio's legs.** The frames endpoint is
-already scoped to one unit and one period, so requesting both legs of a ratio
-from the same ``(unit, period)`` is what guarantees a FY2023 numerator is never
-divided by a FY2022 denominator. That guarantee is a property of *how* the data
-is fetched, which is why the fetch layer owns it and ``benchmark_builder``
-never accepts two frames from different periods for one ratio.
-"""
+"""The XBRL frames API, reduced to ``{cik: fact}``."""
 
 from __future__ import annotations
 
@@ -76,12 +55,7 @@ class FrameResult:
 
 
 def parse_frame(payload: dict[str, Any], *, concept: str, unit: str, period: str) -> FrameResult:
-    """Turn a frames response into ``{cik: FrameFact}``.
-
-    Rows missing a CIK or a numeric value are rejected and counted. A frames
-    payload is data from an external service, so nothing in it is trusted to be
-    the shape the documentation promises.
-    """
+    """Turn a frames response into ``{cik: FrameFact}``."""
     data = payload.get("data")
     if not isinstance(data, list):
         return FrameResult(
@@ -135,13 +109,7 @@ def parse_frame(payload: dict[str, Any], *, concept: str, unit: str, period: str
 def fetch_frame(
     client: EdgarClient, concept: str, *, unit: str = "USD", period: str = "CY2024"
 ) -> FrameResult:
-    """Fetch and parse one frame.
-
-    A concept that 404s is a *fact about the data*, not a crash: plenty of
-    us-gaap tags have no frame for a given period. It comes back
-    ``available=False`` with the reason, and the candidate resolver moves to
-    the next tag in the list.
-    """
+    """Fetch and parse one frame."""
     from app.services.edgar.client import EdgarFetchError, EdgarOfflineError
 
     try:
@@ -161,12 +129,7 @@ def fetch_frame(
 
 @dataclass
 class ResolvedConcept:
-    """A candidate list collapsed into one value per company.
-
-    ``tag_by_cik`` is the part that matters for provenance: it records which of
-    the candidate tags each company was actually read through, which is what
-    lets the built table say "4,102 companies, 3,410 of them through GrossProfit".
-    """
+    """A candidate list collapsed into one value per company."""
 
     values: dict[int, float]
     tag_by_cik: dict[int, str]
@@ -187,12 +150,7 @@ def resolve_candidates(
     unit: str = "USD",
     period: str = "CY2024",
 ) -> ResolvedConcept:
-    """Try each candidate tag in order; first one to carry a company wins.
-
-    One frame request per candidate tag, not per company. A company already
-    resolved by an earlier tag is never overwritten by a later one, which is
-    what makes the candidate list a preference ranking rather than a merge.
-    """
+    """Try each candidate tag in order; first one to carry a company wins."""
     values: dict[int, float] = {}
     tag_by_cik: dict[int, str] = {}
     names: dict[int, str] = {}

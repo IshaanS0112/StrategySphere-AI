@@ -1,19 +1,4 @@
-"""Shared fixtures.
-
-Two kinds of test live in this suite.
-
-The engine tests exercise the pure scoring functions directly — no database, no
-network, no model. That is deliberate: the claims this project makes (the SWOT
-grid is computed from benchmarks, the matrix is arithmetic, the price is floored
-at cost, the report degrades without an API key) are all claims about those
-functions, so they should be verifiable by anyone who clones the repo and runs
-``pytest`` with nothing running.
-
-The API tests run the real FastAPI app against a temporary SQLite file. The
-models declare JSONB and UUID as dialect *variants*, so the same schema loads on
-SQLite — which means the HTTP contract is tested on a clone with no Postgres
-container up, rather than being the one layer nobody ever runs.
-"""
+"""Shared fixtures."""
 
 from __future__ import annotations
 
@@ -148,12 +133,8 @@ def client():
 
 
 # --------------------------------------------------------------------------
-# V3: EDGAR fixtures
-#
-# Every EDGAR test runs against recorded-shape JSON on disk through the real
-# EdgarClient. Nothing in the suite opens a socket: the transport is injected,
-# and the one test that checks the default transport asserts it is *not* called.
-# --------------------------------------------------------------------------
+# V3: EDGAR fixtures Every EDGAR test runs against recorded-shape JSON on disk
+# through the real EdgarClient.
 
 FIXTURE_DIR = Path(__file__).resolve().parent / "fixtures" / "edgar"
 
@@ -226,12 +207,7 @@ def edgar_client(tmp_path, recorded_transport):
 
 @pytest.fixture
 def db_session():
-    """A real session against a fresh schema, plus the engine for query counting.
-
-    Separate from the ``client`` fixture because these tests are about SQL, not
-    HTTP, and driving them through the API would mean the assertions counted
-    the framework's queries as well as the ones under test.
-    """
+    """A real session against a fresh schema, plus the engine for query counting."""
     from app.db.session import Base, SessionLocal, engine
 
     Base.metadata.drop_all(bind=engine)

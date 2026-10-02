@@ -1,12 +1,5 @@
 #!/usr/bin/env python3
-"""Load a case-study JSON file into a running StrategySphere instance.
-
-    python backend/scripts/load_case_study.py data/case_studies/premium_saas.json \
-        --api http://localhost:8000 --run-all
-
-Uses only the standard library so it runs against a deployed instance without
-installing the backend's dependencies.
-"""
+"""Load a case-study JSON file into a running StrategySphere instance."""
 
 from __future__ import annotations
 

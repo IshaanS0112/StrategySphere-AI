@@ -1,11 +1,4 @@
-"""Result tables for the four analysis stages.
-
-Every one of these rows stores a ``calculation_basis`` blob alongside the
-headline number. That blob holds the inputs, the weights, and the intermediate
-terms that produced the score, so any figure the API returns can be recomputed
-by hand from the row that contains it. It is the difference between a score and
-a claim.
-"""
+"""Result tables for the four analysis stages."""
 
 import uuid
 from datetime import datetime
@@ -112,9 +105,7 @@ class StrategyReport(Base):
         ForeignKey("companies.id", ondelete="CASCADE"), nullable=False, index=True
     )
 
-    # Frozen before any model call. Everything the narrative is allowed to say
-    # is in here, which is what makes the "the AI does not decide the strategy"
-    # claim checkable rather than asserted.
+    # Frozen before any model call.
     structured_context: Mapped[dict] = mapped_column(JsonBlob, nullable=False)
     ai_narrative: Mapped[dict | None] = mapped_column(JsonBlob)
     narrative_source: Mapped[str | None] = mapped_column(String(20))  # llm | template_fallback
@@ -127,20 +118,11 @@ class StrategyReport(Base):
 
 
 # --------------------------------------------------------------------------
-# V2
-# --------------------------------------------------------------------------
+# V2 --------------------------------------------------------------------------
 
 
 class PortersAnalysis(Base):
-    """Porter's Five Forces (Porter, 1979).
-
-    Deliberately *not* collapsed into a single verdict column. Porter's point is
-    that the five forces are read individually — an industry can be brutal on
-    rivalry and comfortable on supplier power, and averaging that away destroys
-    the only thing the framework is for. ``composite_score`` exists so the UI
-    has one number to sort by, and it is labelled a project-defined composite
-    everywhere it surfaces.
-    """
+    """Porter's Five Forces (Porter, 1979)."""
 
     __tablename__ = "porters_analyses"
 
@@ -167,12 +149,7 @@ class PortersAnalysis(Base):
 
 
 class Scenario(Base):
-    """A named set of input overrides and the result of recomputing under them.
-
-    The overrides are stored rather than the mutated inputs, so a scenario is
-    always readable as a delta from the baseline it was run against. Running a
-    scenario never touches the company row — the pipeline operates on a copy.
-    """
+    """A named set of input overrides and the result of recomputing under them."""
 
     __tablename__ = "scenarios"
 
@@ -201,22 +178,11 @@ class Scenario(Base):
 
 
 # --------------------------------------------------------------------------
-# V3
-# --------------------------------------------------------------------------
+# V3 --------------------------------------------------------------------------
 
 
 class UncertaintyAnalysis(Base):
-    """A Monte Carlo over analyst-stated input distributions.
-
-    The point verdict is deliberately stored alongside the modal one. They
-    disagree whenever the point estimate sits near a boundary that the sampled
-    mass straddles, and that disagreement is a finding about the inputs rather
-    than a conflict to resolve in favour of one of them.
-
-    ``seed`` and ``draws`` are columns, not basis entries, because a stored
-    probability is only quotable if the run that produced it can be repeated
-    exactly.
-    """
+    """A Monte Carlo over analyst-stated input distributions."""
 
     __tablename__ = "uncertainty_analyses"
 

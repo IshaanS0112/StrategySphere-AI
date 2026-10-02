@@ -1,8 +1,4 @@
-"""Domain enumerations.
-
-``str, Enum`` rather than ``StrEnum`` so the backend runs on Python 3.10 as
-well as 3.11+. Values are always accessed via ``.value`` when serialising.
-"""
+"""Domain enumerations."""
 
 from enum import Enum
 
@@ -31,24 +27,14 @@ class MarketConcentration(str, Enum):
 
 
 class MarginBasis(str, Enum):
-    """How ``target_margin_pct`` is interpreted by the cost-plus anchor.
-
-    MARGIN: price = cost / (1 - m)   -> the realised margin equals m.
-    MARKUP: price = cost * (1 + m)   -> the realised margin is m / (1 + m).
-    """
+    """How ``target_margin_pct`` is interpreted by the cost-plus anchor."""
 
     MARGIN = "MARGIN"
     MARKUP = "MARKUP"
 
 
 class BenchmarkBasis(str, Enum):
-    """Where a SWOT metric's comparison point came from.
-
-    The three V3 members exist because "industry table" stopped being one
-    thing. A placeholder round number and the median of 148 real filers are
-    both "the industry table" and a reader has to be able to tell them apart
-    without opening the file.
-    """
+    """Where a SWOT metric's comparison point came from."""
 
     PEER_SET = "PEER_SET"           # median of the competitors supplied
     INDUSTRY_TABLE = "INDUSTRY_TABLE"   # configured industry reference band
@@ -68,8 +54,7 @@ class NarrativeSource(str, Enum):
 
 
 # --------------------------------------------------------------------------
-# V2
-# --------------------------------------------------------------------------
+# V2 --------------------------------------------------------------------------
 
 class PorterForce(str, Enum):
     """The five forces, named as Porter named them (Porter, 1979)."""
@@ -82,13 +67,7 @@ class PorterForce(str, Enum):
 
 
 class ForceSource(str, Enum):
-    """Whether a force score was derived from data or supplied by a human.
-
-    The whole point of separating these is that three of the five forces have
-    no honest proxy in the data this system holds. Presenting an analyst's
-    guess in the same typeface as a computed HHI would be the exact failure
-    mode V1 was built to avoid.
-    """
+    """Whether a force score was derived from data or supplied by a human."""
 
     COMPUTED = "COMPUTED"                # derived from stored quantitative data
     PARTIALLY_COMPUTED = "PARTIALLY_COMPUTED"   # data-derived base, analyst adjustment
@@ -120,16 +99,11 @@ class SensitivityVerdict(str, Enum):
 
 
 # --------------------------------------------------------------------------
-# V3
-# --------------------------------------------------------------------------
+# V3 --------------------------------------------------------------------------
 
 
 class VerdictStability(str, Enum):
-    """How much of the sampled uncertainty the point verdict survives.
-
-    Banded from the Shannon entropy of the quadrant probabilities, in bits.
-    Zero means every draw agreed; log2(3) = 1.585 means a three-way coin flip.
-    """
+    """How much of the sampled uncertainty the point verdict survives."""
 
     DECISIVE = "DECISIVE"        # the draws overwhelmingly agree
     LEANING = "LEANING"          # a clear modal quadrant with real runner-up mass
@@ -156,18 +130,11 @@ class MetricDerivation(str, Enum):
 
 
 # --------------------------------------------------------------------------
-# V3.1
-# --------------------------------------------------------------------------
+# V3.1 --------------------------------------------------------------------------
 
 
 class JobState(str, Enum):
-    """Lifecycle of a background job.
-
-    Terminal states are SUCCEEDED, FAILED and CANCELLED. A job that is RUNNING
-    with a stale heartbeat is moved to FAILED by the reaper rather than being
-    left in limbo, because a queue people cannot trust to finish is a queue
-    people stop using.
-    """
+    """Lifecycle of a background job."""
 
     QUEUED = "QUEUED"
     RUNNING = "RUNNING"

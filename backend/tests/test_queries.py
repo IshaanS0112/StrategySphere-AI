@@ -1,11 +1,4 @@
-"""The read layer, and a guard against the N+1 coming back.
-
-These tests count SQL statements. That is the only way to test this: the point
-of the change is that ``company.swot_analyses[-1]`` and
-``queries.latest_swot()`` return the same object while asking the database for
-very different amounts of work, and a test that only checks the return value
-would pass on either implementation.
-"""
+"""The read layer, and a guard against the N+1 coming back."""
 
 from __future__ import annotations
 

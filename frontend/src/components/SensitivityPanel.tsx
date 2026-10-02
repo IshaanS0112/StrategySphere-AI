@@ -1,14 +1,6 @@
 import type { AxisSensitivity, Sensitivity } from "../api/types";
 
-/**
- * A tornado chart, plus the binding constraint called out separately.
- *
- * The separate callout is not decoration. A position can be FRAGILE with every
- * attractiveness axis unreachable, because the fragility lives on the strength
- * axis — which is not in the ranked list. Reading the top of the list in that
- * case reports an unreachable axis as "most fragile", exactly backwards. That
- * bug was live until an end-to-end run surfaced it.
- */
+/** A tornado chart, plus the binding constraint called out separately. */
 
 const VERDICT_STYLE: Record<string, string> = {
   ROBUST: "border-positive/40 text-positive",

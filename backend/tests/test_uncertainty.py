@@ -1,10 +1,4 @@
-"""Determinism, entropy bounds, and the degenerate cases.
-
-A Monte Carlo that returns different numbers each run cannot be quoted in a
-report, so determinism is pinned first and hardest. The rest of these tests
-exist because every one of them is a way the sampler could silently describe a
-different company from the one on the matrix.
-"""
+"""Determinism, entropy bounds, and the degenerate cases."""
 
 from __future__ import annotations
 
@@ -283,9 +277,8 @@ class TestCredibleIntervals:
 
 class TestAgreementWithThePointPipeline:
     def test_a_point_run_reproduces_the_matrix_exactly(self, settings):
-        # The Monte Carlo must use the same band-scoring and weighted sum the
-        # matrix uses. If it reimplemented either, the probabilities would
-        # describe a second model that nobody is looking at.
+        # The Monte Carlo must use the same band-scoring and weighted sum the matrix
+        # uses.
         matrix = run_attractiveness_matrix(
             market_data=GROWTH_MARKET,
             swot=SwotResult(),

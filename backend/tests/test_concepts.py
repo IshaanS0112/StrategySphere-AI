@@ -1,11 +1,4 @@
-"""Tag resolution order, and the promise that nothing is ever imputed.
-
-XBRL tags are not uniform across filers, which is the single most interesting
-problem in Pillar A. These tests pin the two properties the rest of the build
-rests on: the candidate list is a *preference ranking* (first match wins, and a
-company already resolved is never overwritten), and a company that resolves
-nothing is dropped and counted rather than filled in.
-"""
+"""Tag resolution order, and the promise that nothing is ever imputed."""
 
 from __future__ import annotations
 
@@ -109,9 +102,9 @@ class TestFrameParsing:
     def test_a_missing_frame_is_unavailable_and_the_next_candidate_is_tried(
         self, edgar_client, recorded_transport
     ):
-        # SalesRevenueNet has an empty fixture frame and NoSuchTag has none at
-        # all - both have to be survivable, because plenty of us-gaap tags have
-        # no frame for a given period.
+        # SalesRevenueNet has an empty fixture frame and NoSuchTag has none at all -
+        # both have to be survivable, because plenty of us-gaap tags have no frame
+        # for a given period.
         resolved = resolve_candidates(
             edgar_client,
             ("NoSuchTag", "Revenues"),

@@ -1,13 +1,4 @@
-"""Report generation.
-
-Three claims are tested here, and they are the three the README makes:
-
-1. Every figure in the report exists in the structured context before any model
-   is called.
-2. A cited factor that is not in the context is dropped, not surfaced.
-3. With no API key — or a failing, slow, or malformed model call — the report
-   still comes out, with identical numbers.
-"""
+"""Report generation."""
 
 from __future__ import annotations
 

@@ -1,11 +1,4 @@
-"""GE-McKinsey matrix.
-
-The two things worth pinning hard: the weighted sum stays on the 1-5 axis (it
-does not if the weights drift off 1.0), and the competitive-strength correction
-reduces exactly to the unadjusted strength mean when its penalty is switched
-off. The second is what makes the deviation a deliberate correction rather than
-a different formula wearing the same name.
-"""
+"""GE-McKinsey matrix."""
 
 from __future__ import annotations
 
@@ -71,8 +64,9 @@ class TestCompetitiveStrength:
 
     def test_only_weaknesses_puts_the_axis_on_the_floor(self, settings: Settings):
         """Regression: a company evaluated on nine metrics that produced only
-        weaknesses used to score 2.56 and land in SELECTIVE_INVEST. Zero
-        strengths against real weaknesses is a finding, not a data gap."""
+                weaknesses used to score 2.56 and land in SELECTIVE_INVEST. Zero
+                strengths against real weaknesses is a finding, not a data gap.
+        """
         score, basis = compute_competitive_strength(swot_with([], [4, 4, 4, 3, 5]), settings)
         assert score == pytest.approx(1.0)
         assert basis["strength_factor_count"] == 0

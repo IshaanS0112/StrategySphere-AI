@@ -6,13 +6,7 @@ import NewCompany from "./pages/NewCompany";
 import PortfolioView from "./pages/PortfolioView";
 import TimelineView from "./pages/TimelineView";
 
-/**
- * The shell: a sticky, blurred header over a page that scrolls under it.
- *
- * Navigation carries a text label per item rather than icons alone, and the
- * active route is marked by weight and a rule as well as by colour — nothing
- * in this interface is encoded by colour by itself.
- */
+/** The shell: a sticky, blurred header over a page that scrolls under it. */
 
 const NAV = [
   { to: "/", label: "Companies", end: true },

@@ -3,21 +3,8 @@ import { useState } from "react";
 import type { ThreePoint, UncertaintyAnalysis } from "../api/types";
 
 /**
- * Quadrant probabilities, credible intervals, and the entropy — beside the
- * point verdict, never instead of it.
- *
- * Two design decisions are load-bearing here.
- *
- * The **point verdict stays the headline**. Replacing a crisp answer with a
- * distribution nobody asked for is how a tool stops being used, so the
- * distribution is the supporting evidence and the point verdict is the number
- * in large type.
- *
- * The **"analyst-supplied" warning is not collapsible**. The distributions are
- * ranges a human typed, so 0.62 means "0.62 of the uncertainty you stated" and
- * not "a 62% chance this is true". A confident-looking probability built on a
- * guessed range is more dangerous than the point estimate it replaced, and the
- * one place that must be said is the screen showing the probability.
+ * Quadrant probabilities, credible intervals, and the entropy — beside the point
+ * verdict, never instead of it.
  */
 
 const MAX_ENTROPY = 1.584962500721156;

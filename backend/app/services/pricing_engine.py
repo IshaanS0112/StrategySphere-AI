@@ -1,36 +1,4 @@
-"""Pricing recommendation engine.
-
-Three classical anchors, blended and then adjusted for relative value:
-
-1. **Cost-plus** — the price floor the unit economics demand.
-2. **Competitor benchmark** — the mean of the competitor price points supplied.
-3. **Value adjustment** — a multiplier driven by the company's feature scores
-   relative to the competitor set on the features they have in common.
-
-    recommended = (w_cost·cost_plus + w_comp·benchmark) × value_adjustment
-    range       = [recommended × 0.9, recommended × 1.1]
-
-**On "target margin" — the obvious formula is wrong, deliberately corrected.**
-``cost × (1 + m)`` is a *markup*, not a margin. On a cost of 100 with m = 0.40
-it returns 140, and the realised margin on that price is (140 − 100)/140 =
-28.6%, not the 40% that was asked for. The correct cost-plus price for a target
-*margin* is ``cost / (1 − m)`` = 166.67, which does deliver 40%. This engine
-defaults to MARGIN basis and exposes MARKUP as an explicit option, and reports
-``implied_margin_pct`` on every result so the discrepancy is visible rather than
-buried. The reconciliation is in ``docs/architecture.md``.
-
-**Guard rails, because an unbounded formula will eventually produce nonsense:**
-
-- The value adjustment is clamped to ±``pricing_value_adjustment_cap``. A
-  company scoring 5/5 against a competitor at 1/5 should not be handed a 40%
-  price premium by an unbounded linear term.
-- The recommendation and the bottom of its range are floored at ``cost_base``.
-  A cost-plus engine recommending a below-cost price is a bug, not a strategy,
-  and the clamp is reported when it fires.
-- Wide competitor price dispersion downgrades the result's confidence: if rivals
-  disagree by more than ``pricing_dispersion_warning_cv``, their mean is not a
-  benchmark, it is an average of unlike things.
-"""
+"""Pricing recommendation engine."""
 
 from __future__ import annotations
 
@@ -64,10 +32,7 @@ class PricingResult:
 
 
 def cost_plus_price(cost_base: float, target_margin_pct: float, basis: MarginBasis) -> float:
-    """Cost-plus anchor under either interpretation of ``target_margin_pct``.
-
-    ``target_margin_pct`` is a fraction: 0.40 means 40%.
-    """
+    """Cost-plus anchor under either interpretation of ``target_margin_pct``."""
     if cost_base < 0:
         raise PricingInputError("cost_base cannot be negative")
     if basis is MarginBasis.MARKUP:
@@ -98,12 +63,7 @@ def compute_value_adjustment(
     competitor_feature_scores: list[dict],
     settings: Settings,
 ) -> tuple[float, dict[str, Any]]:
-    """Multiplier from the relative feature gap, on shared features only.
-
-    Comparing a company's average across {speed, support, uptime} to a
-    competitor's average across {price, brand} is meaningless. Only features
-    present on both sides are scored, and the ones dropped are reported.
-    """
+    """Multiplier from the relative feature gap, on shared features only."""
     company_scores = company_feature_scores if isinstance(company_feature_scores, dict) else {}
     competitor_maps = [m for m in competitor_feature_scores if isinstance(m, dict) and m]
 

@@ -1,3 +1,5 @@
+"""Company and competitor CRUD, with keyset-paginated listing."""
+
 from __future__ import annotations
 
 from typing import Annotated
@@ -31,20 +33,14 @@ def list_companies(
     q: Annotated[str | None, Query(max_length=200, description="Substring of the name")] = None,
     with_total: Annotated[bool, Query(description="Also run a COUNT. Costs a scan.")] = False,
 ):
-    """Newest first, keyset-paginated, with filters the dashboard actually uses.
-
-    V3 returned every company in one array. That is fine for three case studies
-    and unbounded for anything real.
-    """
+    """Newest first, keyset-paginated, with filters the dashboard actually uses."""
     statement = select(Company)
     if industry:
         statement = statement.where(func.lower(Company.industry) == industry.strip().lower())
     if entity_key:
         statement = statement.where(Company.entity_key == entity_key)
     if q:
-        # ILIKE on a name column with no trigram index is a scan. At this table
-        # size that is the right trade; the note is here so the next person
-        # knows it was a decision rather than an oversight.
+        # ILIKE on a name column with no trigram index is a scan.
         needle = f"%{q.strip().lower()}%"
         statement = statement.where(
             or_(func.lower(Company.name).like(needle), func.lower(Company.data_source).like(needle))

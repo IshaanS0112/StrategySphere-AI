@@ -1,10 +1,4 @@
-"""Sensitivity analysis.
-
-The claim being tested is that the flip distances are *exact*, not approximate.
-So the tests do not check "roughly the right axis is ranked first" — they apply
-the reported delta and assert the quadrant actually changes, and that one
-notch less than the reported delta does not.
-"""
+"""Sensitivity analysis."""
 
 from __future__ import annotations
 
@@ -86,9 +80,9 @@ class TestExactness:
             )
 
     def test_hand_computed_flip_distance(self, settings: Settings):
-        # growth 4, size 4, profit 4, intensity 2 -> A = 1.2+0.8+1.2+0.8 = 4.0
-        # To drop A below the 3.5 high threshold via market_growth (w = 0.3):
-        #   required = (3.5 - 4.0) / 0.3 = -1.6667
+        # growth 4, size 4, profit 4, intensity 2 -> A = 1.2+0.8+1.2+0.8 = 4.0 To
+        # drop A below the 3.5 high threshold via market_growth (w = 0.3): required
+        # = (3.5 - 4.0) / 0.3 = -1.6667
         result, attractiveness = analyse(settings, strength=4.0)
         assert attractiveness == pytest.approx(4.0)
         growth = next(a for a in result.axes if a.axis == "market_growth")
@@ -101,8 +95,7 @@ class TestBounds:
         self, settings: Settings
     ):
         # Size carries only 0.2 weight; from 4.0 it can shed at most 0.6 of
-        # attractiveness, which cannot get from 4.0 down to 3.5... actually it
-        # can (0.5 needed). Use a deeply-INVEST_GROW position instead.
+        # attractiveness, which cannot get from 4.0 down to 3.5...
         result, _ = analyse(
             settings, growth=5.0, size=5.0, profitability=5.0, intensity=1.0, strength=5.0
         )
@@ -128,7 +121,8 @@ class TestConjunctiveRule:
         self, settings: Settings
     ):
         """INVEST_GROW needs BOTH axes high, so raising attractiveness alone
-        cannot enter it while strength sits below the threshold."""
+                cannot enter it while strength sits below the threshold.
+        """
         result, _ = analyse(
             settings, growth=3.0, size=3.0, profitability=3.0, intensity=3.0, strength=2.8
         )
@@ -185,9 +179,9 @@ class TestVerdict:
 class TestBindingConstraint:
     def test_binding_constraint_can_be_the_strength_axis(self, settings: Settings):
         """Regression: A=4.0 is already past the high threshold but S=3.25 is
-        not, so every attractiveness axis is unreachable and the verdict hangs
-        entirely on strength. Reading axes[0] here reports an unreachable axis
-        as 'most fragile', which is exactly backwards."""
+                not, so every attractiveness axis is unreachable and the verdict hangs
+                entirely on strength. Reading axes[0] here reports an unreachable axis
+        """
         result, attractiveness = analyse(
             settings, growth=4.0, size=4.0, profitability=4.0, intensity=2.0, strength=3.25
         )
@@ -210,8 +204,9 @@ class TestBindingConstraint:
 
     def test_robust_still_reports_where_the_nearest_flip_is(self, settings: Settings):
         """ROBUST does not mean 'nothing can flip it' — it means the nearest
-        flip needs a move larger than the fragile threshold. Reporting that
-        distance is more useful than reporting nothing."""
+                flip needs a move larger than the fragile threshold. Reporting that
+                distance is more useful than reporting nothing.
+        """
         result, _ = analyse(
             settings, growth=5.0, size=5.0, profitability=5.0, intensity=1.0, strength=5.0
         )

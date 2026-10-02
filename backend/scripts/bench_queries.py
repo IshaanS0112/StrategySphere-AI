@@ -1,19 +1,5 @@
 #!/usr/bin/env python3
-"""Measure the read layer: queries issued and ORM rows built, old path vs new.
-
-    python backend/scripts/bench_queries.py --runs 20 --companies 12
-
-Both paths are exercised against the same seeded database in the same process,
-so the comparison is not one machine against another or a warm cache against a
-cold one. Queries are counted with a SQLAlchemy ``before_cursor_execute`` hook,
-which counts what the database was actually asked to do rather than what the
-code looks like it asks for - the whole point being that
-``company.swot_analyses[-1]`` does not look like a full table read.
-
-This stays in the repository as a regression guard. A refactor that quietly
-reintroduces a lazy collection load will show up here as the query count
-going back up.
-"""
+"""Measure the read layer: queries issued and ORM rows built, old path vs new."""
 
 from __future__ import annotations
 
@@ -39,10 +25,8 @@ def counted(engine):
         stats["queries"] += 1
 
     def after(conn, cursor, statement, parameters, context, executemany):
-        # SQLite reports rowcount -1 for SELECT, so counting rows means
-        # counting what the ORM actually materialised. That is the cost being
-        # measured anyway: the expensive part of a collection load is building
-        # an object per row and decoding a JSON blob into each one.
+        # SQLite reports rowcount -1 for SELECT, so counting rows means counting
+        # what the ORM actually materialised.
         result = getattr(context, "cursor_fetch_strategy", None)
         stats["rows"] += getattr(result, "_rowbuffer_len", 0) or 0
 
@@ -206,17 +190,7 @@ def main() -> int:
     # --- EDGAR fetch concurrency -----------------------------------------
     # Simulated latency rather than live requests: the point is a reproducible
     # number, and it would be rude to hammer a public API to produce one for a
-    # README. 150 ms is the middle of what data.sec.gov actually returns.
-    # Two latency regimes, because the honest answer depends on which one you
-    # are in and the first measurement of this contradicted the justification
-    # written above it.
-    #
-    # Serial wall time per request is (latency + gap), where gap is whatever
-    # the limiter still owes after the request returned: max(0, 1/rate -
-    # latency). So concurrency only buys anything when LATENCY EXCEEDS the
-    # limiter's spacing. At the default 5 req/s that spacing is 200 ms, and
-    # data.sec.gov usually answers faster than that - so the default
-    # configuration is already limiter-bound and concurrency is worth nothing.
+    # README.
     from app.services.edgar.client import EdgarClient
 
     urls = [f"https://data.sec.gov/submissions/CIK{i:010d}.json" for i in range(1, 101)]

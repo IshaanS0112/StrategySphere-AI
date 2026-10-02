@@ -1,11 +1,4 @@
-"""Request and response schemas.
-
-Input validation is doing real work here, not ceremony. Market shares are
-bounded to 0-100, impact scores to 1-5, and margins to a range that cannot make
-the cost-plus formula divide by zero. Every one of those constraints exists
-because the corresponding engine would otherwise produce a confident, wrong
-number from a typo.
-"""
+"""Request and response schemas."""
 
 from __future__ import annotations
 
@@ -71,12 +64,7 @@ class PeriodFields(BaseModel):
 
 
 class ThreePointIn(BaseModel):
-    """A low / mode / high estimate for one uncertain input.
-
-    Validated here as well as in the engine because a mode outside its own
-    range is a typo, and the engine's job is to refuse it rather than to be the
-    only thing standing between a typo and a confident-looking probability.
-    """
+    """A low / mode / high estimate for one uncertain input."""
 
     low: float
     mode: float
@@ -205,9 +193,8 @@ class MarketAttractivenessOut(BaseModel):
 
 class PricingRequest(BaseModel):
     cost_base: float = Field(gt=0, description="Unit cost in the same currency as competitor prices")
-    # Upper bound of 0.95 rather than 1.0: on MARGIN basis, cost / (1 - m) at
-    # m = 0.99 returns 100x cost, which is arithmetically fine and
-    # commercially absurd. 0.95 is already a 20x multiple.
+    # Upper bound of 0.95 rather than 1.0: on MARGIN basis, cost / (1 - m) at m =
+    # 0.99 returns 100x cost, which is arithmetically fine and commercially absurd.
     target_margin_pct: float = Field(
         ge=0, le=0.95, description="Fraction, not percent: 0.40 means 40%"
     )
@@ -248,9 +235,7 @@ class StrategyReportOut(BaseModel):
 
 
 # --------------------------------------------------------------------------
-# V2
-# --------------------------------------------------------------------------
-
+# V2 --------------------------------------------------------------------------
 
 
 class PortersAnalysisOut(BaseModel):
@@ -317,17 +302,11 @@ class ValidationRequest(BaseModel):
 
 
 # --------------------------------------------------------------------------
-# V3
-# --------------------------------------------------------------------------
+# V3 --------------------------------------------------------------------------
 
 
 class UncertaintyRequest(BaseModel):
-    """Optional per-run overrides for the stored distributions.
-
-    Supplying ``uncertainty_inputs`` here runs the Monte Carlo over these
-    ranges without writing them to the company, which is what makes "what if I
-    am less sure about growth than I said" a one-request question.
-    """
+    """Optional per-run overrides for the stored distributions."""
 
     uncertainty_inputs: dict[str, ThreePointIn] | None = Field(
         default=None,
@@ -439,19 +418,11 @@ class AllocationRunOut(BaseModel):
 
 
 # --------------------------------------------------------------------------
-# V3.1
-# --------------------------------------------------------------------------
+# V3.1 --------------------------------------------------------------------------
 
 
 class Page(BaseModel, Generic[ItemT]):
-    """A cursor-paginated slice.
-
-    Cursor, not offset. ``LIMIT n OFFSET m`` re-scans and discards m rows on
-    every page, so page 50 costs fifty times page 1, and a row inserted while a
-    client pages through will shift every subsequent page - duplicating one row
-    and skipping another. A keyset cursor over ``(created_at, id)`` is stable
-    under concurrent writes and costs the same for every page.
-    """
+    """A cursor-paginated slice."""
 
     items: list[ItemT]
     next_cursor: str | None = Field(
@@ -498,9 +469,7 @@ class BenchmarkBuildRequest(BaseModel):
     @field_validator("out")
     @classmethod
     def _contained(cls, value: str | None) -> str | None:
-        # A path this endpoint accepts becomes a file this server writes. Keep
-        # it inside the data directory rather than letting a caller choose
-        # where the process puts bytes.
+        # A path this endpoint accepts becomes a file this server writes.
         if value is None:
             return None
         cleaned = value.strip()

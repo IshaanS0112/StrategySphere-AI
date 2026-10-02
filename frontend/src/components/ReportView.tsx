@@ -2,14 +2,7 @@ import { useState } from "react";
 
 import type { StrategyReport } from "../api/types";
 
-/**
- * The pre-LLM context is deliberately one click away, not hidden.
- *
- * The claim this project makes is that every figure in the narrative existed
- * before any model was called. That claim is only worth anything if a reader
- * can check it, so the exact JSON that was sent to the model is rendered right
- * underneath the prose it produced.
- */
+/** The pre-LLM context is deliberately one click away, not hidden. */
 export default function ReportView({ report }: { report: StrategyReport }) {
   const [showContext, setShowContext] = useState(false);
   const narrative = report.ai_narrative;

@@ -1,27 +1,4 @@
-"""Executive strategy report: structured context -> constrained LLM narrative.
-
-The ordering is the whole point of the module.
-
-1. ``build_structured_context`` assembles every figure the report will contain
-   from work the deterministic engines already did — the SWOT grid, the
-   GE-McKinsey placement, the pricing recommendation. Nothing in it is inferred
-   by a language model.
-2. ``generate_narrative`` hands that context to the model under a JSON-only
-   contract with an explicit instruction not to introduce facts, not to
-   recompute, and not to contradict the quadrant verdict.
-3. ``_validate_narrative`` discards any cited factor name that does not appear
-   verbatim in the context's SWOT grid. A hallucinated citation is dropped
-   rather than surfaced, and the drop is counted in the response.
-4. If the call fails, times out, returns unparseable output, or no API key is
-   configured, ``_fallback_narrative`` produces the same report from a template.
-   Every number is identical; only the prose is missing.
-
-So the answer to "does your AI decide the strategy?" is no — it writes it up.
-The SWOT scoring, the matrix, and the pricing formula decide it. Every figure in
-a generated report exists in ``structured_context``, which is stored beside the
-narrative and returned by the API, so the claim is checkable rather than
-asserted.
-"""
+"""Executive strategy report: structured context -> constrained LLM narrative."""
 
 from __future__ import annotations
 

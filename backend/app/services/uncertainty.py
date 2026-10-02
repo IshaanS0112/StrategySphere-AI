@@ -1,48 +1,4 @@
-"""Uncertainty propagation: how likely is this verdict, given what I don't know?
-
-Every input in V1 and V2 is a point estimate. The matrix consumes
-``market_growth_pct = 18.0`` as if it were known. It is not known; it is an
-estimate, and reporting a quadrant off the back of it carries a confidence the
-inputs do not support.
-
-**What this does.** Any axis input may be supplied as a three-point estimate
-``{low, mode, high}`` instead of a number. Each draw samples every such input,
-runs the *same* band-scoring and weighted sum the point pipeline runs, and
-places a quadrant. Ten thousand draws give a distribution over quadrants, a
-credible interval on each axis, and a Shannon entropy that says in one number
-how much of the verdict is real and how much is the analyst's uncertainty.
-
-**PERT, and why.** A three-point estimate carries a mode, and a uniform
-distribution throws it away. PERT weights the mode more sensibly than a
-triangular does and is the standard in project estimation:
-
-    mean  = (low + lambda*mode + high) / (lambda + 2)          lambda = 4
-    alpha = 1 + lambda * (mode - low)  / (high - low)
-    beta  = 1 + lambda * (high - mode) / (high - low)
-    x     = low + Beta(alpha, beta) * (high - low)
-
-Triangular and uniform remain selectable, and whichever was used is recorded in
-``calculation_basis``. None of them is *right* — the choice is a modelling
-assumption and is labelled as one.
-
-**Three things this is not.**
-
-*It is not an objective probability.* The distributions are analyst-supplied.
-``P(INVEST_GROW) = 0.62`` means "0.62 of the uncertainty you stated", and the
-payload says so in those words. A confident-looking 0.62 built on a guessed
-range is more dangerous than the point estimate it replaced.
-
-*It does not replace the point verdict.* The point verdict stays the headline
-and the probabilities sit beside it. Replacing a crisp answer with a
-distribution nobody asked for is how a tool stops being used.
-
-*It is not the same question as sensitivity analysis.* V2's sensitivity asks
-**how far would one input have to move** to flip the verdict. This asks **how
-likely is each verdict** given stated uncertainty. They disagree often — a
-ROBUST position with wide input ranges can still be CONTESTED, and a FRAGILE
-one with tight ranges can be DECISIVE — and the disagreement is the
-informative part, not a defect to smooth over.
-"""
+"""Uncertainty propagation: how likely is this verdict, given what I don't know?"""
 
 from __future__ import annotations
 
@@ -103,12 +59,7 @@ class ThreePoint:
 
 
 def parse_three_point(key: str, raw: Any) -> ThreePoint | None:
-    """Read ``{low, mode, high}``. ``None`` when the input is a plain number.
-
-    Rejects loudly rather than repairing. A mode outside its own range is a
-    typo, and silently clamping it produces a distribution the analyst never
-    described and cannot recognise in the output.
-    """
+    """Read ``{low, mode, high}``. ``None`` when the input is a plain number."""
     if not isinstance(raw, dict):
         return None
     missing = [field_name for field_name in ("low", "mode", "high") if field_name not in raw]
@@ -155,13 +106,7 @@ def sample_once(estimate: ThreePoint, rng: random.Random, settings: Settings) ->
 
 
 def shannon_entropy_bits(probabilities: dict[str, float]) -> float:
-    """Entropy over the quadrant distribution, in bits.
-
-    Zero when every draw agreed; log2(3) = 1.585 when the three quadrants are
-    equally likely. This is the single number that answers "how much should I
-    trust this verdict", which is why it goes on screen next to the quadrant
-    rather than in a footnote.
-    """
+    """Entropy over the quadrant distribution, in bits."""
     total = 0.0
     for probability in probabilities.values():
         if probability > 0.0:
@@ -193,13 +138,7 @@ def percentile(sorted_values: list[float], fraction: float) -> float:
 
 
 def _axis_draw(sampled: dict[str, float], key: str, bands: tuple[float, ...]) -> float:
-    """Band-score one sampled market input, imputing neutral when it is absent.
-
-    The point pipeline imputes ``NEUTRAL_SCORE`` for a market axis nobody
-    supplied. Band-scoring a missing value as 0.0 here instead would score it 1
-    on every draw, and the Monte Carlo would silently be describing a different
-    company from the one on the matrix.
-    """
+    """Band-score one sampled market input, imputing neutral when it is absent."""
     value = sampled.get(key)
     if value is None:
         return NEUTRAL_SCORE
@@ -240,13 +179,7 @@ def run_uncertainty_analysis(
     point_quadrant: str,
     settings: Settings,
 ) -> UncertaintyResult:
-    """Monte Carlo over the stated distributions. Seeded and deterministic.
-
-    ``uncertainty_inputs`` maps an input key to ``{low, mode, high}``. Anything
-    absent keeps its point value and does not vary across draws, which is what
-    lets an analyst state uncertainty about the one input they are unsure of
-    without having to invent ranges for the rest.
-    """
+    """Monte Carlo over the stated distributions. Seeded and deterministic."""
     supplied = dict(uncertainty_inputs or {})
     unknown = sorted(set(supplied) - set(SUPPORTED_INPUTS))
     if unknown:
@@ -285,9 +218,8 @@ def run_uncertainty_analysis(
         for key, estimate in estimates.items():
             sampled[key] = sample_once(estimate, rng, settings)
 
-        # Band-scoring, weighted sum, and placement are the same functions the
-        # point pipeline uses. A second implementation here would be a second
-        # model, and the probabilities would describe that one instead.
+        # Band-scoring, weighted sum, and placement are the same functions the point
+        # pipeline uses.
         growth = _axis_draw(sampled, "market_growth_pct", MARKET_GROWTH_BANDS)
         size = _axis_draw(sampled, "market_size_usd_bn", MARKET_SIZE_BANDS)
         profitability = _axis_draw(

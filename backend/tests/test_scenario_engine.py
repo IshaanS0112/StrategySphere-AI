@@ -1,11 +1,4 @@
-"""What-if scenarios.
-
-Two properties matter more than the arithmetic: a scenario must never mutate
-the baseline it was run against, and an override key that does not exist must
-be an error rather than a no-op. A typo'd override that silently does nothing
-produces a scenario showing "no change", which reads as evidence the verdict is
-stable — the most dangerous possible failure for this feature.
-"""
+"""What-if scenarios."""
 
 from __future__ import annotations
 

@@ -1,38 +1,4 @@
-"""Sensitivity analysis: how much would have to be wrong for the verdict to change?
-
-This is the question V1 could not answer. It produced a quadrant and a
-`borderline` flag, but "borderline" only measured distance to a boundary — it
-said nothing about *which input* the verdict actually hangs on, or how far that
-input would have to move.
-
-**The useful property: the attractiveness score is linear in its axes.**
-
-    A = w_g·g + w_s·s + w_p·p + w_i·(6 − i)
-
-so the partial derivative of A with respect to any axis is just its weight
-(negative for intensity, since it enters inverted). That means the minimum
-change in a single axis needed to reach a boundary is exact arithmetic, not a
-search:
-
-    required_delta = (threshold − A) / (∂A/∂axis)
-
-No perturbation loop, no step size to tune, no risk of stepping over the
-boundary and missing it. Brute-force perturbation gives an approximation whose
-resolution is whatever step you happened to choose; this gives the answer.
-
-Two things the solve has to respect, or it produces impossible advice:
-
-1. **Axis bounds.** Every axis is 1-5, so an axis sitting at 4.2 has only 0.8
-   of headroom left. A solve demanding +1.5 is unreachable and is reported as
-   such rather than as a small number that looks actionable.
-2. **The quadrant rule is conjunctive.** `INVEST_GROW` needs attractiveness
-   *and* strength both above the high threshold, so moving attractiveness alone
-   cannot enter that quadrant if strength is below it. The engine checks the
-   resulting quadrant rather than assuming crossing a threshold changes it.
-
-Strength is handled separately: it is not a weighted axis but the output of the
-SWOT penalty formula, so its "axis" is the score itself with a unit derivative.
-"""
+"""Sensitivity analysis: how much would have to be wrong for the verdict to change?"""
 
 from __future__ import annotations
 
@@ -92,9 +58,7 @@ class SensitivityResult:
     axes: list[AxisSensitivity] = field(default_factory=list)
     strength_sensitivity: AxisSensitivity | None = None
     # The single input needing the smallest reachable move, across the four
-    # attractiveness axes AND the strength axis. Not simply axes[0]: a position
-    # can be fragile with every attractiveness axis unreachable, because the
-    # fragility lives on strength.
+    # attractiveness axes AND the strength axis.
     binding_constraint: AxisSensitivity | None = None
     calculation_basis: dict[str, Any] = field(default_factory=dict)
 
@@ -115,11 +79,7 @@ def _smallest_flip_for_axis(
     strength: float,
     settings: Settings,
 ) -> tuple[float | None, float | None, str | None, bool, str]:
-    """Return (delta, new_axis_value, new_quadrant, reachable, note).
-
-    Solves toward each threshold analytically, keeps the candidates that stay
-    inside the axis bounds, and verifies the quadrant actually changes.
-    """
+    """Return (delta, new_axis_value, new_quadrant, reachable, note)."""
     baseline_quadrant = _quadrant_at(attractiveness, strength, settings)
 
     if abs(derivative) < 1e-12:
@@ -142,8 +102,8 @@ def _smallest_flip_for_axis(
 
     if not candidates:
         # Distinguish "no threshold is reachable inside the axis bounds" from
-        # "crossing it does not change the quadrant because the rule is
-        # conjunctive" - they need different advice.
+        # "crossing it does not change the quadrant because the rule is conjunctive"
+        # - they need different advice.
         reachable_up = derivative * (AXIS_MAX - current)
         reachable_down = derivative * (AXIS_MIN - current)
         span_lo, span_hi = sorted((attractiveness + reachable_down, attractiveness + reachable_up))
@@ -250,12 +210,8 @@ def run_sensitivity_analysis(
     # last regardless of their arithmetic, since they cannot change anything.
     axes.sort(key=lambda a: (not a.reachable, abs(a.required_delta or 1e9)))
 
-    # The binding constraint is whichever single input — attractiveness axis or
-    # the strength axis — needs the smallest reachable move. Naming it matters:
-    # a position can be FRAGILE with every attractiveness axis unreachable,
-    # because the fragility lives on strength. Reading the top of the ranked
-    # axis list in that case reports an unreachable axis as "most fragile",
-    # which is exactly backwards. Caught on the end-to-end smoke run.
+    # The binding constraint is whichever single input — attractiveness axis or the
+    # strength axis — needs the smallest reachable move.
     candidates = [
         a
         for a in axes + [strength_sensitivity]

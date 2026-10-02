@@ -1,29 +1,4 @@
-"""V3.1: background jobs, and the indexes the read layer needs
-
-Revision ID: 0004_v31_jobs_and_indexes
-Revises: 0003_v3_uncertainty_and_portfolio
-Create Date: 2026-09-28
-
-Two things.
-
-**The jobs table**, so long-running work (an EDGAR rebuild, a validation panel)
-can be enqueued and polled instead of being refused with a 501 or blocking a
-request for five minutes.
-
-**The composite indexes the new query layer depends on.** Every stage reads
-"the latest result for this company", which is now
-``WHERE company_id = ? ORDER BY <timestamp> DESC LIMIT 1``. With only the
-single-column ``company_id`` index that V1 created, the database finds the
-right rows and then sorts them; with ``(company_id, timestamp DESC)`` it walks
-the index backwards and stops at the first row. On the hot path that is the
-difference between a sort of every run a company has ever had and reading one
-index entry.
-
-The plain ``company_id`` indexes are left in place. Dropping them for the
-composite would be correct - a composite serves the prefix - but it is a
-migration that can only be validated against production traffic, and the
-storage saved is not worth the risk on a table this size.
-"""
+"""V3.1: background jobs, and the indexes the read layer needs"""
 from __future__ import annotations
 
 import sqlalchemy as sa

@@ -1,10 +1,4 @@
-"""SWOT scoring.
-
-The interesting cases are the boundaries and the abstentions: a metric just
-inside the neutral band must produce no factor at all, and a missing benchmark
-must be skipped rather than imputed. A SWOT engine that always finds something
-to say is a SWOT engine that is not measuring anything.
-"""
+"""SWOT scoring."""
 
 from __future__ import annotations
 

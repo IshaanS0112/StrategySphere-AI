@@ -1,21 +1,4 @@
-"""Keyset pagination over ``(created_at, id)``.
-
-``GET /companies`` returned every row. That is fine for the three case studies
-and wrong the moment someone loads a real book of business - the response grows
-without bound, the JSON serialiser walks the whole table, and the dashboard
-renders a list nobody scrolls.
-
-**Keyset, not offset.** ``LIMIT n OFFSET m`` makes the database walk and throw
-away m rows, so page 50 costs fifty times page 1, and any row inserted while a
-client pages shifts every later page - duplicating one row and skipping
-another. A cursor over a strictly-ordered key pair does neither: it is a
-``WHERE (created_at, id) < (?, ?)`` seek that costs the same for every page and
-is stable under concurrent writes.
-
-The cursor is base64 over ``<iso timestamp>|<uuid>``. Opaque so clients do not
-build on its shape, but decodable by a developer with a terminal, because an
-undebuggable cursor is its own support ticket.
-"""
+"""Keyset pagination over ``(created_at, id)``."""
 
 from __future__ import annotations
 
@@ -60,12 +43,7 @@ def paginate(
     cursor: str | None = None,
     with_total: bool = False,
 ) -> tuple[list[Any], str | None, int | None]:
-    """Return ``(items, next_cursor, total)`` for a newest-first listing.
-
-    Fetches ``limit + 1`` rows and discards the extra. That is how the
-    existence of a next page is known without a second COUNT query - the
-    sentinel row either exists or it does not.
-    """
+    """Return ``(items, next_cursor, total)`` for a newest-first listing."""
     from sqlalchemy import func, select
 
     ordered = statement.order_by(model.created_at.desc(), model.id.desc())

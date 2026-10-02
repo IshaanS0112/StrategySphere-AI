@@ -1,20 +1,4 @@
-"""V3: uncertainty propagation and portfolio capital allocation
-
-Revision ID: 0003_v3_uncertainty_and_portfolio
-Revises: 0002_v2_periods_porters_scenarios
-Create Date: 2026-09-21
-
-Additive throughout, same discipline as 0002. The new column on ``companies``
-is nullable and nothing is backfilled: a company with no ``uncertainty_inputs``
-has no stated distributions, which is true of every row created before this
-migration and is exactly what the point-estimate pipeline assumes. Inventing a
-range for a row that never had one would be fabricating the analyst's
-uncertainty, which is the one thing the uncertainty feature must never do.
-
-``portfolio_members`` references ``companies`` rather than a new entity table,
-so a member is a pointer at a company-period row that has already been scored.
-That reuses the V2 period identity instead of running a second one alongside it.
-"""
+"""V3: uncertainty propagation and portfolio capital allocation"""
 from __future__ import annotations
 
 import sqlalchemy as sa
@@ -109,9 +93,9 @@ def upgrade() -> None:
             sa.ForeignKey("portfolios.id", ondelete="CASCADE"),
             nullable=False,
         ),
-        # Stored rather than read back off the portfolio: a run is a record of
-        # the budget it was actually computed against, and the portfolio's
-        # budget can change afterwards.
+        # Stored rather than read back off the portfolio: a run is a record of the
+        # budget it was actually computed against, and the portfolio's budget can
+        # change afterwards.
         sa.Column("budget", sa.Float(), nullable=False),
         sa.Column("allocations", JSONB, nullable=False),
         sa.Column("unfunded", JSONB, nullable=False),

@@ -1,29 +1,4 @@
-"""us-gaap candidate tags per metric, and the rules that turn facts into ratios.
-
-**XBRL tags are not uniform across filers.** The same economic quantity appears
-under different ``us-gaap`` tags depending on the filer, its industry and the
-year it adopted a standard. Revenue is the worst of them: a company on the
-post-ASC-606 tag reports ``RevenueFromContractWithCustomerExcludingAssessedTax``,
-an older or simpler filer reports ``Revenues``, and a third reports
-``SalesRevenueNet``. All three mean revenue. None of them is present for
-everybody.
-
-So every metric carries an **ordered candidate list**. The builder tries the
-tags in order, takes the first that resolves for a given company, and records
-*which tag it was*. A company where no candidate resolves is dropped and
-counted — never imputed, never filled with a sector average, never quietly
-skipped. That is the V1 SWOT discipline ("the trace for every metric, including
-the ones that were skipped and why") applied to real-world messy data, and the
-coverage rate it produces is meaningfully below 100%. Reporting that number is
-the work.
-
-**Two metrics in METRIC_RULES have no honest XBRL proxy at all.** Market share
-needs a market definition that no filing contains, and customer retention is
-not a US-GAAP concept. They are declared ``NOT_DERIVABLE`` here rather than
-approximated, and the built table simply has no row for them — which makes the
-SWOT engine fall through to whatever other benchmark basis it has, exactly as
-it does today for any metric the table does not cover.
-"""
+"""us-gaap candidate tags per metric, and the rules that turn facts into ratios."""
 
 from __future__ import annotations
 
@@ -55,11 +30,7 @@ RND_TAGS: tuple[str, ...] = ("ResearchAndDevelopmentExpense",)
 
 @dataclass(frozen=True)
 class MetricSpec:
-    """How one benchmark-table metric is built out of XBRL facts.
-
-    ``key`` matches a key in ``benchmarks.METRIC_RULES`` exactly. A spec whose
-    key is not in that table would build a column the SWOT engine never reads.
-    """
+    """How one benchmark-table metric is built out of XBRL facts."""
 
     key: str
     label: str
@@ -69,18 +40,12 @@ class MetricSpec:
     # Ratios are reported in percentage points; debt-to-equity is a bare
     # multiple and must not be scaled.
     scale: float = 100.0
-    # Balance-sheet concepts are INSTANTANEOUS in the frames API and live under
-    # a different period key: Assets for calendar 2024 is CY2024Q4I, not CY2024.
-    # Requesting an instant concept with a duration period returns 404, and a
-    # ratio built from it resolves zero companies - which is exactly what the
-    # first live build produced for return on capital and debt-to-equity.
+    # Balance-sheet concepts are INSTANTANEOUS in the frames API and live under a
+    # different period key: Assets for calendar 2024 is CY2024Q4I, not CY2024.
     numerator_instant: bool = False
     denominator_instant: bool = False
     note: str = ""
-    # Sanity bounds. A filer reporting a 40,000% operating margin has a unit
-    # error or a near-zero denominator, and one such row moves a mean but not a
-    # median - which is exactly why the table publishes medians. The bounds
-    # exist so the *coverage* count is not inflated by nonsense.
+    # Sanity bounds.
     plausible_range: tuple[float, float] = (-1e6, 1e6)
     concepts_used: tuple[str, ...] = field(default=())
 
@@ -183,9 +148,7 @@ METRIC_SPECS: tuple[MetricSpec, ...] = (
 
 METRIC_SPEC_BY_KEY: dict[str, MetricSpec] = {spec.key: spec for spec in METRIC_SPECS}
 
-# Declared, not faked. These are in benchmarks.METRIC_RULES and the SWOT engine
-# scores them happily when a peer set supplies them - they simply cannot be
-# sourced from XBRL, so an EDGAR-built table has no row for them.
+# Declared, not faked.
 NOT_DERIVABLE: dict[str, str] = {
     "market_share_pct": (
         "Market share requires a market definition. No filing contains one, and "
@@ -205,13 +168,7 @@ NOT_DERIVABLE: dict[str, str] = {
 def resolve_first(
     facts_by_tag: dict[str, float], candidates: tuple[str, ...]
 ) -> tuple[str, float] | None:
-    """First candidate tag present, with its value. ``None`` if none resolves.
-
-    Order is the whole point: the candidate list is a preference ranking, so a
-    company reporting both ``Revenues`` and the ASC-606 tag is read through the
-    606 tag on every metric, and never mixes the two between numerator and
-    denominator of one ratio.
-    """
+    """First candidate tag present, with its value. ``None`` if none resolves."""
     for tag in candidates:
         value = facts_by_tag.get(tag)
         if isinstance(value, (int, float)) and not isinstance(value, bool):

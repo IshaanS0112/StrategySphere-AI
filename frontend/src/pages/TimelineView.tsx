@@ -4,12 +4,7 @@ import { Link, useParams } from "react-router-dom";
 import { api } from "../api/client";
 import type { Timeline, TimelinePoint } from "../api/types";
 
-/**
- * Quadrant migration across reporting periods.
- *
- * The path is drawn on the same 2.5 / 3.5 grid as the single-period matrix, so
- * a reader can see the position move rather than compare two static pictures.
- */
+/** Quadrant migration across reporting periods. */
 
 const SIZE = 340;
 const PAD = 44;

@@ -1,9 +1,4 @@
-"""HTTP contract, end to end, against a temporary SQLite database.
-
-The stage-ordering 409s are the interesting part. The matrix must be built on
-the SWOT grid the user actually saw, so requesting it first is an error rather
-than a silent recompute.
-"""
+"""HTTP contract, end to end, against a temporary SQLite database."""
 
 from __future__ import annotations
 
@@ -237,8 +232,7 @@ class TestFullPipeline:
 
 
 # --------------------------------------------------------------------------
-# V3
-# --------------------------------------------------------------------------
+# V3 --------------------------------------------------------------------------
 
 
 class TestUncertaintyEndpoint:
@@ -576,8 +570,7 @@ class TestMethodologyV3:
 
 
 # --------------------------------------------------------------------------
-# V3.1
-# --------------------------------------------------------------------------
+# V3.1 --------------------------------------------------------------------------
 
 
 class TestPaginationEndpoint:
@@ -622,8 +615,8 @@ class TestPaginationEndpoint:
 
     def test_an_insert_mid_paging_does_not_duplicate_a_row(self, client):
         # The reason for keyset over offset: with OFFSET, inserting a newer row
-        # shifts every later page by one, so a row is shown twice and another
-        # is never shown at all.
+        # shifts every later page by one, so a row is shown twice and another is
+        # never shown at all.
         self._seed(client, 6)
         first = client.get("/companies", params={"limit": 3}).json()
         create_company(client, {**COMPANY, "name": "Inserted Later"})
@@ -731,9 +724,8 @@ class TestReadiness:
         assert "jobs" in body["checks"]
 
     def test_liveness_touches_nothing(self, client):
-        # A liveness probe that checks the database restarts the API whenever
-        # the database hiccups, turning a dependency blip into a self-inflicted
-        # outage. This one only reports that the process is up.
+        # A liveness probe that checks the database restarts the API whenever the
+        # database hiccups, turning a dependency blip into a self-inflicted outage.
         body = client.get("/health").json()
         assert set(body) == {"status", "version", "uptime_seconds"}
 

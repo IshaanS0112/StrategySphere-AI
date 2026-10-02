@@ -1,14 +1,4 @@
-"""Alembic environment.
-
-The database URL comes from ``Settings`` rather than ``alembic.ini`` so that
-migrations run against whatever the application itself is pointed at — SQLite
-for local work, Postgres in the container — without a second place to keep in
-sync.
-
-``render_as_batch`` is on because SQLite cannot ``ALTER TABLE ... DROP COLUMN``
-or alter a column type. Batch mode makes Alembic rebuild the table instead,
-which is what lets the same migration script run on both backends.
-"""
+"""Alembic environment."""
 
 from __future__ import annotations
 
@@ -20,9 +10,7 @@ from sqlalchemy import engine_from_config, pool
 from app.config import get_settings
 from app.db.session import Base
 
-# Importing the models package is what populates Base.metadata. Without it
-# autogenerate sees an empty schema and cheerfully proposes dropping every
-# table in the database.
+# Importing the models package is what populates Base.metadata.
 import app.models  # noqa: F401
 
 config = context.config

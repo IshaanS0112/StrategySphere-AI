@@ -5,13 +5,7 @@ import { ApiError, api } from "../api/client";
 import type { AllocationRun, Company, Portfolio } from "../api/types";
 import PortfolioGrid from "../components/PortfolioGrid";
 
-/**
- * Build a portfolio from scored company-periods, then allocate a budget over it.
- *
- * The list of candidates is deliberately every company, not only the scored
- * ones: an unscored unit has to be *visibly* unavailable rather than quietly
- * missing, or the reason the allocation refuses it arrives as a surprise 409.
- */
+/** Build a portfolio from scored company-periods, then allocate a budget over it. */
 
 interface Draft {
   company_id: string;

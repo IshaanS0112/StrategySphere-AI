@@ -1,21 +1,4 @@
-"""V1 baseline schema
-
-Revision ID: 0001_v1_baseline
-Revises:
-Create Date: 2026-09-08
-
-The schema as it stood at the end of V1, created here so that V2's migration
-has something to migrate *from*. V1 used ``Base.metadata.create_all`` at
-startup, which is fine while a schema is append-only and stops being fine the
-moment a column has to change shape — which is exactly what V2 needed.
-
-An existing V1 database will already have these tables. Run
-
-    alembic stamp 0001_v1_baseline
-
-against it once to record that this revision is already applied, then
-``alembic upgrade head`` to pick up V2. A fresh database just runs both.
-"""
+"""V1 baseline schema"""
 from __future__ import annotations
 
 import sqlalchemy as sa

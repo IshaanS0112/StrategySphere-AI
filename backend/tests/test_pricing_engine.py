@@ -1,9 +1,4 @@
-"""Pricing.
-
-The margin-vs-markup arithmetic is pinned numerically here, because that is the
-one place this implementation knowingly departs from the textbook shorthand,
-and the claim in the README is only worth making if a test proves it.
-"""
+"""Pricing."""
 
 from __future__ import annotations
 
@@ -104,13 +99,11 @@ class TestValueAdjustment:
 
 class TestRecommendation:
     def test_hand_computed_blend(self, competitors, settings: Settings):
-        # cost 60, margin 0.4 MARGIN -> anchor 100.0
-        # competitor mean of (100, 110, 95, 105) = 102.5
-        # blend 0.5/0.5 -> 101.25
-        # company features {speed 3, support 3, uptime 3} = 3.0
-        # competitor shared-feature averages: A 10/3, B 3.0, C 3.0, D 8/3
-        #   mean = (3.3333 + 3.0 + 3.0 + 2.6667)/4 = 3.0
-        # delta 0 -> factor 1.0 -> recommended 101.25
+        # cost 60, margin 0.4 MARGIN -> anchor 100.0 competitor mean of (100, 110,
+        # 95, 105) = 102.5 blend 0.5/0.5 -> 101.25 company features {speed 3,
+        # support 3, uptime 3} = 3.0 competitor shared-feature averages: A 10/3, B
+        # 3.0, C 3.0, D 8/3 mean = (3.3333 + 3.0 + 3.0 + 2.6667)/4 = 3.0 delta 0 ->
+        # factor 1.0 -> recommended 101.25
         result = run_pricing_engine(
             cost_base=60.0,
             target_margin_pct=0.40,

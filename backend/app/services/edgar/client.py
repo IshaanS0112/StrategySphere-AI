@@ -1,28 +1,4 @@
-"""Rate-limited, User-Agent-enforced, disk-cached client for data.sec.gov.
-
-``data.sec.gov`` is the SEC's official public REST API: no authentication, no
-keys, JSON, published for external developers. Using it is the opposite of the
-competitor-price scraping V1 refused to do — nothing here parses HTML, and no
-endpoint outside data.sec.gov / www.sec.gov is ever contacted.
-
-Three things in this module are load-bearing rather than decorative.
-
-**The User-Agent is mandatory.** SEC developer guidance requires automated
-access to identify the requester with contact details. There is no default and
-no fallback: ``EdgarClient`` raises on construction when it is unset, so the
-failure happens on a developer's laptop rather than as an anonymous request
-hitting government infrastructure. A configuration mistake that degrades into
-"works, but rudely" is worse than one that refuses to start.
-
-**The rate limiter is a token bucket, not a sleep.** Published guidance is 10
-requests/second; the default is 5. ``Settings`` refuses to load above 10, so
-the ceiling cannot be raised past the published limit by editing an env var.
-
-**Every response is cached to disk by URL.** Historical period data does not
-change, so a rebuild must not re-hit the API — and ``offline=True`` serves the
-cache *only*, raising on a miss. A pipeline that silently reaches out when you
-asked it not to is one that will do so from CI.
-"""
+"""Rate-limited, User-Agent-enforced, disk-cached client for data.sec.gov."""
 
 from __future__ import annotations
 
@@ -61,12 +37,7 @@ class EdgarFetchError(RuntimeError):
 
 
 def validate_user_agent(raw: str | None) -> str:
-    """Return a usable User-Agent or explain precisely why there is not one.
-
-    The contact check is a substring test for ``@``, which is crude and
-    deliberate: it catches the actual failure mode, which is somebody pasting
-    ``"StrategySphere"`` and believing they have complied.
-    """
+    """Return a usable User-Agent or explain precisely why there is not one."""
     candidate = (raw or "").strip()
     if not candidate:
         raise EdgarConfigError(
@@ -88,32 +59,7 @@ def validate_user_agent(raw: str | None) -> str:
 
 
 class TokenBucket:
-    """Rate limiter with an explicit, and by default absent, burst allowance.
-
-    **The burst is the part that was wrong.** A classic token bucket seeded
-    with ``capacity == rate`` lets ``rate`` requests fire instantly and then
-    refills at ``rate``, so the worst one-second window contains up to
-    ``2 x rate``. Measured at a configured 20/s: 39 requests inside one second.
-    That behaviour was in V3 too; serial fetching just made it hard to reach,
-    because each request had to return before the next was issued.
-
-    For a public API with a published ceiling, "twice the configured rate, but
-    only briefly" is not a defence. ``burst`` therefore defaults to 1 - strict
-    pacing, one request every ``1/rate`` seconds, so no one-second window can
-    hold more than ``rate + 1``. A caller who genuinely wants burst capacity
-    has to ask for it and say how much.
-
-    **Thread-safe**, which V3's version was not. That did not matter while
-    every fetch was serial; it matters the moment several workers share one
-    limiter, because two threads that read ``_tokens`` before either decrements
-    it both believe they may proceed - and the published rate is exceeded by
-    exactly the amount of concurrency. The lock is held across the accounting
-    only, never across the sleep, so waiting threads do not serialise behind
-    one another.
-
-    ``clock`` and ``sleep`` are injectable so the limiter can be tested without
-    a test suite that takes real seconds to run.
-    """
+    """Rate limiter with an explicit, and by default absent, burst allowance."""
 
     def __init__(
         self,
@@ -143,12 +89,7 @@ class TokenBucket:
         self._tokens = min(self.capacity, self._tokens + elapsed * self.rate)
 
     def take(self) -> float:
-        """Consume one token, blocking if necessary. Returns the seconds waited.
-
-        The token is reserved *under the lock* before sleeping, so N threads
-        arriving together queue for distinct slots instead of all sleeping for
-        the same one and then firing at once.
-        """
+        """Consume one token, blocking if necessary. Returns the seconds waited."""
         with self._lock:
             self._refill()
             if self._tokens >= 1.0:
@@ -207,9 +148,9 @@ class EdgarClient:
         clock: Callable[[], float] = time.monotonic,
         sleep: Callable[[float], None] = time.sleep,
     ) -> None:
-        # Offline mode never touches the network, so it does not need a
-        # User-Agent - and demanding one would make cached fixtures unusable in
-        # CI, where there are no contact details to supply.
+        # Offline mode never touches the network, so it does not need a User-Agent -
+        # and demanding one would make cached fixtures unusable in CI, where there
+        # are no contact details to supply.
         self.offline = bool(offline)
         self.user_agent = "" if self.offline else validate_user_agent(user_agent)
         self.cache_dir = Path(cache_dir)
@@ -224,12 +165,7 @@ class EdgarClient:
     # --- cache ------------------------------------------------------------
 
     def cache_path(self, url: str) -> Path:
-        """Content-addressed by URL.
-
-        The hash prefix keeps the filename legal for any URL; the readable
-        suffix keeps a cache directory browsable by a human trying to work out
-        what was fetched.
-        """
+        """Content-addressed by URL."""
         digest = hashlib.sha256(url.encode("utf-8")).hexdigest()[:16]
         tail = url.rstrip("/").split("/")[-1].replace(".json", "")[:60]
         safe_tail = "".join(c if c.isalnum() or c in "-_" else "-" for c in tail)
@@ -277,8 +213,8 @@ class EdgarClient:
         headers = {
             "User-Agent": self.user_agent,
             "Accept": "application/json",
-            # Explicitly identity: urllib does not transparently decompress, and
-            # a gzip body parsed as JSON fails in a way that looks like the SEC
+            # Explicitly identity: urllib does not transparently decompress, and a
+            # gzip body parsed as JSON fails in a way that looks like the SEC
             # returned garbage.
             "Accept-Encoding": "identity",
         }
@@ -315,21 +251,7 @@ class EdgarClient:
         *,
         on_result: Callable[[str, dict[str, Any] | None, Exception | None], None] | None = None,
     ) -> dict[str, dict[str, Any]]:
-        """Fetch many URLs with bounded concurrency, still rate-limited.
-
-        The SIC classification pass is one request per company - fifteen
-        hundred of them for a full build. Serially that is fifteen hundred
-        round trips laid end to end, and at five requests a second most of the
-        wall clock is latency the limiter is not even using.
-
-        Concurrency here overlaps that latency; it does **not** raise the rate.
-        Every worker takes a token from the same bucket first, so the outbound
-        rate is identical to the serial case and the SEC's published limit is
-        respected no matter what ``concurrency`` is set to.
-
-        Failures are returned rather than raised: one 404 among fifteen hundred
-        companies is data about that company, not a reason to abandon the pass.
-        """
+        """Fetch many URLs with bounded concurrency, still rate-limited."""
         results: dict[str, dict[str, Any]] = {}
         if not urls:
             return results
@@ -372,11 +294,7 @@ class EdgarClient:
     def frames(
         self, concept: str, *, unit: str = "USD", period: str = "CY2024", taxonomy: str = "us-gaap"
     ) -> dict[str, Any]:
-        """One fact for every reporting entity for one period.
-
-        This is the endpoint that makes sector medians possible in a handful of
-        requests rather than one request per company.
-        """
+        """One fact for every reporting entity for one period."""
         return self.get_json(
             FRAMES_URL.format(taxonomy=taxonomy, concept=concept, unit=unit, period=period)
         )

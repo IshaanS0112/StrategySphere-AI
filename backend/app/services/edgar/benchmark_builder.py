@@ -1,38 +1,4 @@
-"""Frames + SIC -> sector medians + the provenance block that makes them readable.
-
-This is the module that closes the loudest caveat in the repository. V1 and V2
-shipped an industry benchmark table of placeholder round numbers, and said so
-in three places. Every SWOT factor scored against that table was therefore
-scored against a number I invented. This builds the table from SEC XBRL filings
-instead.
-
-**What it emits** is exactly the JSON shape ``INDUSTRY_BENCHMARKS_PATH`` already
-consumes — a mapping of sector to ``{metric: value}`` — plus a ``_provenance``
-block and per-row ``_meta``. The SWOT engine reads a table from a path and
-records a basis, which it already did; nothing in it learns about HTTP.
-
-**Three rules keep the output honest.**
-
-1. *Drop and count, never impute.* A company where no candidate tag resolves is
-   excluded and the reason recorded. Coverage is published as a number.
-2. *A ratio's legs share a period and a unit.* Guaranteed structurally: both
-   legs come from the same ``(unit, period)`` frame request. A FY2023
-   numerator over a FY2022 denominator produces a number that looks fine and is
-   wrong.
-3. *A sector median is published only at n >= min_sector_n.* Below that the
-   sector is omitted entirely and lookups fall through to the all-filer median,
-   which the output states. A median of four companies is not an industry
-   benchmark.
-
-**The SIC sample, stated plainly.** Sector classification needs the submissions
-endpoint, which is one request per company — thousands of requests for a full
-universe. So the all-filer median uses *every* filer that resolved a metric
-(free: it needs no SIC), while sector medians cover a bounded sample: the
-``sic_lookup_limit`` largest filers by revenue that resolved at least one
-metric. That biases every sector median toward large-cap filers. It is a real
-limitation, it is in the provenance block, and it is the price of a build that
-finishes inside the published rate limit.
-"""
+"""Frames + SIC -> sector medians + the provenance block that makes them readable."""
 
 from __future__ import annotations
 
@@ -99,12 +65,7 @@ class BuildResult:
 
 
 class ConceptCache:
-    """One frames request per candidate tag per period, never two.
-
-    Revenue is the denominator of four ratios and the numerator of growth. Left
-    unmemoised this class of builder makes the same three revenue frame
-    requests five times, which is both slow and rude to a public API.
-    """
+    """One frames request per candidate tag per period, never two."""
 
     def __init__(self, client: EdgarClient) -> None:
         self._client = client
@@ -124,17 +85,7 @@ class ConceptCache:
 
 
 def instant_period(period: str) -> str:
-    """Duration period -> the instantaneous key for the same period end.
-
-    The frames API splits its two kinds of fact into different period keys.
-    Income-statement concepts are durations and live under ``CY2024``;
-    balance-sheet concepts are instants and live under ``CY2024Q4I``, the
-    balance as at the period end. Requesting ``Assets`` for ``CY2024`` returns
-    404, and the first live build of this table duly resolved zero companies
-    for both ratios with a balance-sheet leg. The units and the fiscal year
-    still match across a ratio's legs - a full-year numerator over the balance
-    at the end of that same year is the standard pairing, not a mismatch.
-    """
+    """Duration period -> the instantaneous key for the same period end."""
     body = period.removeprefix("CY")
     if len(body) == 4 and body.isdigit():
         return f"CY{body}Q4I"
@@ -171,9 +122,8 @@ def company_values_for_metric(
                 coverage.drop(f"no revenue tag resolved for {prior_period}")
                 continue
             if current.tag_by_cik.get(cik) != prior.tag_by_cik.get(cik):
-                # Post-606 tag in one year and the legacy tag in the other are
-                # two different definitions of revenue. A growth rate across
-                # them measures the taxonomy change, not the business.
+                # Post-606 tag in one year and the legacy tag in the other are two
+                # different definitions of revenue.
                 coverage.drop("revenue tag differs between the two periods")
                 continue
             if before <= 0:
@@ -239,10 +189,8 @@ def _classify_sample(
     failures = 0
     unclassified = 0
 
-    # One request per company, so this is the longest phase of a build by an
-    # order of magnitude. Fetched with bounded concurrency: the shared token
-    # bucket still caps the outbound RATE at the configured limit, and the
-    # parallelism only overlaps round-trip latency the limiter was idle for.
+    # One request per company, so this is the longest phase of a build by an order
+    # of magnitude.
     done = {"n": 0}
 
     def report(_url: str, _payload: object, error: Exception | None) -> None:
@@ -307,12 +255,9 @@ def build_benchmark_table(
 
     universe = sorted({cik for values in metric_values.values() for cik in values})
 
-    # A table with no companies behind it is not a benchmark table, and writing
-    # one is worse than failing: it would be a well-formed file of nothing that
-    # the SWOT engine then loads and scores against. This fires when every
-    # frame came back unavailable - an offline build against a cold cache, a
-    # period the API has no data for, or a network that is down - all of which
-    # previously produced a SUCCESS and an empty file.
+    # A table with no companies behind it is not a benchmark table, and writing one
+    # is worse than failing: it would be a well-formed file of nothing that the SWOT
+    # engine then loads and scores against.
     if not universe:
         unavailable = [
             frame.error or "no data"
@@ -327,8 +272,8 @@ def build_benchmark_table(
         )
 
     # --- the SIC sample ----------------------------------------------------
-    # Ranked by revenue descending so the sample is deterministic and its bias
-    # is a stated one. CIK as the tie-break keeps the order stable across runs.
+    # Ranked by revenue descending so the sample is deterministic and its bias is a
+    # stated one.
     revenue = cache.get(concept_mod.REVENUE_TAGS, unit="USD", period=period).values
     ranked = sorted(universe, key=lambda cik: (-revenue.get(cik, 0.0), cik))
     sample = ranked[: max(0, int(sic_lookup_limit))]
@@ -380,11 +325,7 @@ def build_benchmark_table(
                 "basis": BenchmarkBasis.EDGAR_SECTOR_MEDIAN.value,
             }
         if not row:
-            # Every metric in this sector fell short of min_sector_n. Publishing
-            # an empty row would be indistinguishable from a sector that simply
-            # has no data, so record why it is absent instead. Both numbers are
-            # kept: a sector can have 20 members and still publish nothing,
-            # because membership is not the same as resolving a metric.
+            # Every metric in this sector fell short of min_sector_n.
             sectors_below_min_n[sector] = {
                 "classified_members": len(members),
                 "best_metric_n": best_metric_n,

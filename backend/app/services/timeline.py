@@ -1,25 +1,4 @@
-"""Multi-period tracking: quadrant migration across reporting periods.
-
-A single GE-McKinsey placement is a photograph. The question a strategy
-committee actually has is whether the position is getting better or worse, and
-that needs the same company scored at several points in time.
-
-**The modelling decision.** A row in ``companies`` is a company *as reported for
-one period*, not a company. Two rows sharing an ``entity_key`` are the same firm
-at two dates. That keeps the migration purely additive on the V1 schema — a row
-with no ``entity_key`` is a standalone snapshot and behaves exactly as it did
-before — and it avoids the alternative, which would have been a separate
-entities table and a rewrite of every existing foreign key.
-
-**Ordering is by ``period_end``, never by label.** "FY2024" sorts before
-"FY2025" by luck; "Q3-2025" sorts after "Q11-2025" by the same luck running
-out. A period with no end date is excluded from the trend and reported as
-excluded rather than silently appended.
-
-**Trends need a materiality floor.** A 0.03 move on a 1-5 axis between two
-periods is not an improvement, it is rounding. Anything below
-``trend_material_delta`` is reported as STABLE.
-"""
+"""Multi-period tracking: quadrant migration across reporting periods."""
 
 from __future__ import annotations
 
@@ -85,11 +64,7 @@ def build_timeline(
     rows: list[dict[str, Any]],
     settings: Settings,
 ) -> TimelineResult:
-    """Order the periods, classify the trend, and list every quadrant change.
-
-    ``rows`` are plain dicts so this stays a pure function: one per company
-    period that has a stored matrix result.
-    """
+    """Order the periods, classify the trend, and list every quadrant change."""
     usable: list[PeriodPoint] = []
     excluded: list[dict[str, Any]] = []
 

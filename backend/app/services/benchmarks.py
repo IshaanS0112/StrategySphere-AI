@@ -1,34 +1,4 @@
-"""Metric definitions and industry reference bands for the SWOT engine.
-
-Two things live here.
-
-**Metric rules** — the closed set of financial line items the engine knows how
-to compare, each with its direction (is more of this good?) and its unit. A
-company that does not supply a metric is not penalised for it; the metric is
-skipped and the omission is recorded.
-
-**Industry reference bands** — the fallback benchmark used when the supplied
-peer set is too small to produce a meaningful median.
-
-⚠️ THE SHIPPED REFERENCE BANDS ARE ILLUSTRATIVE ROUND NUMBERS, NOT SOURCED
-INDUSTRY DATA. They are plausible orders of magnitude chosen so the engine has
-something to compare against out of the box. They are deliberately not
-attributed to any data provider, because inventing an attribution would be
-worse than admitting the numbers are placeholders.
-
-For real analysis, do one of two things — both supported, neither requiring a
-code change:
-
-1. Supply ``financial_data`` on at least ``swot_min_peers_for_benchmark``
-   competitors. The engine then benchmarks against the **peer-set median**, and
-   the reference table is never consulted. This is the intended path and the
-   result records ``benchmark_basis = "PEER_SET"``.
-2. Point ``INDUSTRY_BENCHMARKS_PATH`` at a JSON file of your own figures, keyed
-   by industry, sourced from filings or a data provider you actually have.
-
-Every scored factor carries the benchmark value and its basis in its evidence
-string, so a reader can always see which of the three paths produced a number.
-"""
+"""Metric definitions and industry reference bands for the SWOT engine."""
 
 from __future__ import annotations
 
@@ -164,16 +134,7 @@ class BenchmarkPoint:
 
 @dataclass(frozen=True)
 class BenchmarkTable:
-    """A loaded benchmark table: values, per-row metadata, and where it came from.
-
-    V2 carried the table as a bare ``{sector: {metric: float}}`` mapping, which
-    was right while every number in it was a placeholder. A table built from
-    EDGAR needs to say *how many companies* are behind each median and whether
-    a given row is a sector median or the all-filer fallback, so the evidence
-    string can carry it. The bare mapping is still exposed as ``.rows`` and the
-    old two-tuple loader still works, so nothing that only wanted the numbers
-    had to change.
-    """
+    """A loaded benchmark table: values, per-row metadata, and where it came from."""
 
     rows: dict[str, dict[str, float]]
     provenance: str
@@ -182,12 +143,7 @@ class BenchmarkTable:
     provenance_detail: dict[str, Any] | None = None
 
     def lookup(self, industry: str | None, metric_key: str) -> BenchmarkPoint | None:
-        """Sector row first, then ``_default``. Unchanged fallback order.
-
-        A sector whose median fell below ``edgar_min_sector_n`` is simply not in
-        the file, so it falls through to ``_default`` here without this function
-        needing to know the rule that omitted it.
-        """
+        """Sector row first, then ``_default``. Unchanged fallback order."""
         key = (industry or "").strip().lower()
         for candidate in (key, "_default"):
             row = self.rows.get(candidate)
@@ -225,12 +181,7 @@ def _summarise_provenance(detail: dict[str, Any], filename: str) -> str:
 
 
 def load_benchmark_table(path: str | None = None) -> BenchmarkTable:
-    """Load a table from ``path``, or the built-in placeholders when unset.
-
-    A malformed or missing override file falls back to the built-in table with
-    a warning rather than raising: a benchmark table is an input to the
-    analysis, not a hard dependency of the service starting.
-    """
+    """Load a table from ``path``, or the built-in placeholders when unset."""
     if not path:
         return BenchmarkTable(
             rows=_DEFAULT_INDUSTRY_BENCHMARKS,
@@ -272,10 +223,7 @@ def load_benchmark_table(path: str | None = None) -> BenchmarkTable:
         values: dict[str, float] = {}
         for key, value in row.items():
             # Underscore-prefixed keys are row metadata (_n, _basis, _meta), not
-            # metrics. V2's loader coerced every value with float(), so a table
-            # carrying "_basis": "EDGAR_SECTOR_MEDIAN" raised ValueError out of a
-            # comprehension that only caught OSError and JSONDecodeError - taking
-            # the whole API down at startup on a well-formed file.
+            # metrics.
             if str(key).startswith("_"):
                 continue
             if isinstance(value, bool) or not isinstance(value, (int, float)):
@@ -327,13 +275,7 @@ def industry_benchmark(
 
 
 def peer_median(peer_financials: list[dict], metric_key: str, minimum: int) -> float | None:
-    """Median of the peers that actually reported ``metric_key``.
-
-    Median rather than mean: peer sets are small and one outlier competitor
-    should not drag the comparison point. Returns ``None`` when fewer than
-    ``minimum`` peers reported the metric, which is the signal to fall back to
-    the industry table.
-    """
+    """Median of the peers that actually reported ``metric_key``."""
     values = [
         float(financials[metric_key])
         for financials in peer_financials

@@ -1,9 +1,4 @@
-"""V3 endpoints: uncertainty, portfolios, and benchmark provenance.
-
-Same discipline as V1 and V2. Anything that reads a prior stage reads the
-**stored** row rather than recomputing, and an ordering violation is a 409 with
-an explanation rather than a silent recompute behind the caller's back.
-"""
+"""V3 endpoints: uncertainty, portfolios, and benchmark provenance."""
 
 from __future__ import annotations
 
@@ -52,13 +47,7 @@ def create_uncertainty_analysis(
     db: DbSession,
     settings: AppSettings,
 ):
-    """Propagate stated input distributions through the matrix.
-
-    With no distributions stated anywhere the run is still valid and returns a
-    probability of 1.0 on the point verdict with zero entropy, which is the
-    correct answer to "how uncertain is this" when nobody claimed to be
-    uncertain about anything.
-    """
+    """Propagate stated input distributions through the matrix."""
     if queries.latest_matrix(db, company.id) is None:
         raise errors.stage_order(_NEEDS_MATRIX, needs="matrix")
 
@@ -166,12 +155,7 @@ def allocate(
     db: DbSession,
     settings: AppSettings,
 ):
-    """Run the budget-constrained allocation and store the result.
-
-    A 409 rather than a partial plan when the floors cannot be met: a committee
-    that asked whether this portfolio can be funded needs to hear that it
-    cannot, not receive an allocation that quietly starves two units.
-    """
+    """Run the budget-constrained allocation and store the result."""
     portfolio = _load_portfolio(db, portfolio_id)
     try:
         return analysis_pipeline.run_allocation(
@@ -192,12 +176,7 @@ def list_allocations(portfolio_id: uuid.UUID, db: DbSession):
 
 @router.get("/benchmarks/provenance", tags=["meta"])
 def benchmark_provenance(settings: AppSettings):
-    """What the live benchmark table is, and where every number in it came from.
-
-    The single most useful endpoint for answering "are these benchmarks real".
-    With no table configured it says so in the same words the built-in table has
-    always used, which is the honest answer rather than an empty block.
-    """
+    """What the live benchmark table is, and where every number in it came from."""
     table = cache.benchmark_table(settings.industry_benchmarks_path)
     sectors = sorted(key for key in table.rows if key != "_default")
     return {
@@ -223,7 +202,4 @@ def benchmark_provenance(settings: AppSettings):
     }
 
 
-# POST /benchmarks/build now lives in routers/jobs.py. V3 answered it with a
-# 501 and a CLI command, on the reasoning that hundreds of rate-limited calls
-# over several minutes do not belong inside a request. That reasoning holds;
-# the conclusion was wrong. The work is now enqueued and polled.
+# POST /benchmarks/build now lives in routers/jobs.py.

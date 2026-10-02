@@ -1,24 +1,5 @@
 #!/usr/bin/env python3
-"""Regenerate the EDGAR fixture files.
-
-    python backend/tests/fixtures/edgar/make_fixtures.py
-
-These files are **hand-constructed to the recorded shape of real data.sec.gov
-responses**, not copies of real SEC data. That distinction matters and is the
-reason this generator is committed next to them:
-
-* A real frames response for a common concept is several megabytes and roughly
-  seven thousand rows. Committing one would add tens of megabytes to a repo for
-  a test that needs sixty companies.
-* Every edge case the builder has to handle — a company on the legacy revenue
-  tag, a company whose tag changes between periods, a negative denominator, a
-  sector one company short of the minimum — has to be *present* for the
-  drop-and-count paths to be tested. Waiting for them to turn up in a real
-  sample is not testing, it is hoping.
-
-The field names, nesting and types are taken from the live API. Nothing in the
-test suite ever opens a socket.
-"""
+"""Regenerate the EDGAR fixture files."""
 
 from __future__ import annotations
 
@@ -27,15 +8,13 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 
-# 60 companies laid out so every branch in the builder is reachable:
-#   1000-1024  post-606 revenue tag, full financials          (25)
-#   1025-1039  legacy Revenues tag, full financials           (15)
-#   1040-1044  revenue but no gross profit                    (5)
-#   1045-1047  gross profit but no revenue at all             (3)
-#   1048-1049  zero / negative revenue -> non-positive denominator (2)
-#   1050-1052  revenue tag differs between CY2023 and CY2024  (3)
-#   1053-1055  present in CY2024 only -> no prior period      (3)
-#   1056-1059  negative book equity -> debt_to_equity dropped (4)
+# 60 companies laid out so every branch in the builder is reachable: 1000-1024
+# post-606 revenue tag, full financials (25) 1025-1039 legacy Revenues tag, full
+# financials (15) 1040-1044 revenue but no gross profit (5) 1045-1047 gross profit
+# but no revenue at all (3) 1048-1049 zero / negative revenue -> non-positive
+# denominator (2) 1050-1052 revenue tag differs between CY2023 and CY2024 (3)
+# 1053-1055 present in CY2024 only -> no prior period (3) 1056-1059 negative book
+# equity -> debt_to_equity dropped (4)
 POST_606 = "RevenueFromContractWithCustomerExcludingAssessedTax"
 LEGACY = "Revenues"
 
@@ -97,9 +76,9 @@ def build() -> dict[str, dict]:
     for cik in range(1000, 1060):
         index = cik - 1000
         base_revenue = 1_000_000.0 * (index + 1)
-        # Margin varies by sector block so sector medians differ from each other
-        # and from the all-filer median - a test that cannot tell them apart
-        # cannot prove the sector logic works.
+        # Margin varies by sector block so sector medians differ from each other and
+        # from the all-filer median - a test that cannot tell them apart cannot
+        # prove the sector logic works.
         if cik < 1012:
             margin = 0.70 + (index % 5) * 0.01        # saas: ~70-74%
         elif cik < 1024:
@@ -162,10 +141,7 @@ def build() -> dict[str, dict]:
         "OperatingIncomeLoss", "CY2024", operating_income
     )
     files["frames-NetIncomeLoss-CY2024"] = frame("NetIncomeLoss", "CY2024", net_income)
-    # Balance-sheet concepts are INSTANTANEOUS and live under CY2024Q4I, not
-    # CY2024. Filing them here under the duration key would make the fixtures
-    # disagree with the live API in exactly the way that cost the first real
-    # build two whole metrics.
+    # Balance-sheet concepts are INSTANTANEOUS and live under CY2024Q4I, not CY2024.
     files["frames-Assets-CY2024Q4I"] = frame("Assets", "CY2024Q4I", assets)
     files["frames-Liabilities-CY2024Q4I"] = frame("Liabilities", "CY2024Q4I", liabilities)
     files["frames-StockholdersEquity-CY2024Q4I"] = frame(

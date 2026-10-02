@@ -1,17 +1,8 @@
 import type { AllocationEntry, AllocationRun } from "../api/types";
 
 /**
- * Every business unit on one GE-McKinsey grid, sized by revenue, filled by
- * what the allocator did with it.
- *
- * This is the framework used for the job McKinsey built it for: GE had roughly
- * forty business units and needed to decide which to feed. Scoring one company
- * is the degenerate case, and this is the screen a capital committee actually
- * looks at.
- *
- * Bubble **area** is proportional to revenue, not radius. Mapping revenue to
- * radius exaggerates every difference by squaring it, which is the oldest way
- * to make a chart lie without writing a false number on it.
+ * Every business unit on one GE-McKinsey grid, sized by revenue, filled by what the
+ * allocator did with it.
  */
 
 const SIZE = 420;
@@ -68,9 +59,9 @@ function Bubble({ entry, maxRevenue }: { entry: AllocationEntry; maxRevenue: num
   const r = radiusFor(entry.revenue, maxRevenue);
   const label = entry.name.length > 22 ? `${entry.name.slice(0, 21)}…` : entry.name;
 
-  // A unit at the floor of either axis sits on the plot edge, and a centred
-  // label there runs off the chart - which clipped the name of the one unit a
-  // reader most wants to identify, the one being harvested.
+  // A unit at the floor of either axis sits on the plot edge, and a centred label there
+  // runs off the chart - which clipped the name of the one unit a reader most wants to
+  // identify, the one being harvested.
   const EDGE = 70;
   const anchor = cx < PAD + EDGE ? "start" : cx > SIZE - PAD - EDGE ? "end" : "middle";
   const labelX = anchor === "start" ? PAD + 2 : anchor === "end" ? SIZE - PAD - 2 : cx;

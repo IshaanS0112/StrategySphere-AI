@@ -1,10 +1,4 @@
-"""The min-n rule, coverage reporting, and the drop-and-count paths.
-
-The fixture universe is built so every drop reason is reachable: companies with
-no revenue tag, companies whose revenue tag changes between periods, a
-non-positive denominator, negative book equity, and one sector deliberately
-short of the minimum sample.
-"""
+"""The min-n rule, coverage reporting, and the drop-and-count paths."""
 
 from __future__ import annotations
 
@@ -79,9 +73,9 @@ class TestMinimumSampleRule:
     def test_a_sector_below_the_minimum_is_omitted_and_named(self, built):
         assert "financials" not in built.table
         entry = built.provenance["sectors_below_min_n"]["financials"]
-        # Membership and metric coverage are different numbers, and reporting
-        # only the first makes "biotech (20)" look like it should have cleared
-        # a minimum of 20 when no metric resolved that many.
+        # Membership and metric coverage are different numbers, and reporting only
+        # the first makes "biotech (20)" look like it should have cleared a minimum
+        # of 20 when no metric resolved that many.
         assert entry["classified_members"] == 4
         assert entry["best_metric_n"] <= entry["classified_members"]
 
@@ -231,10 +225,7 @@ class TestProvenanceBlock:
         assert "n=" in point.label()
 
     def test_underscore_keys_never_reach_the_metric_rows(self, tmp_path, built):
-        # V2's loader ran float() over every value in a row. A table carrying
-        # "_basis": "EDGAR_SECTOR_MEDIAN" would have raised ValueError out of a
-        # comprehension that only caught OSError and JSONDecodeError, taking the
-        # API down at startup on a well-formed file.
+        # V2's loader ran float() over every value in a row.
         path = tmp_path / "edgar.json"
         path.write_text(json.dumps(built.payload()))
         table = bench.load_benchmark_table(str(path))
@@ -247,12 +238,7 @@ class TestProvenanceBlock:
 
 
 class TestInstantaneousPeriods:
-    """Balance-sheet concepts live under a different period key than income ones.
-
-    The first live build of this table resolved ZERO companies for return on
-    capital and debt-to-equity, because Assets for calendar 2024 is CY2024Q4I
-    and CY2024 is a 404. Both are now pinned.
-    """
+    """Balance-sheet concepts live under a different period key than income ones."""
 
     def test_a_calendar_year_maps_to_its_q4_instant(self):
         assert instant_period("CY2024") == "CY2024Q4I"
@@ -317,14 +303,7 @@ class TestDeterminismAndRequestDiscipline:
 
 
 class TestEmptyBuildIsRefused:
-    """A build that resolves nothing must fail, not write an empty table.
-
-    Found by running the job against an offline client with a cold cache: every
-    frame came back unavailable, the builder happily took medians of nothing,
-    and the job reported SUCCEEDED with a well-formed file containing no
-    companies. The SWOT engine would then have loaded that file and scored
-    against it.
-    """
+    """A build that resolves nothing must fail, not write an empty table."""
 
     def test_an_offline_build_with_a_cold_cache_fails_loudly(self, tmp_path):
         from app.services.edgar.benchmark_builder import BenchmarkBuildError

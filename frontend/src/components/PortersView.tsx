@@ -1,13 +1,6 @@
 import type { ForceSource, PortersAnalysis } from "../api/types";
 
-/**
- * The source badge is the point of this component.
- *
- * Two of the five forces have no proxy in the data this system stores and are
- * analyst judgement or nothing. Rendering a typed-in buyer-power score in the
- * same style as an HHI-derived rivalry score would undo the discipline the rest
- * of the project is built on, so every bar carries where its number came from.
- */
+/** The source badge is the point of this component. */
 
 const SOURCE_STYLE: Record<ForceSource, string> = {
   COMPUTED: "border-accent/40 text-accent",

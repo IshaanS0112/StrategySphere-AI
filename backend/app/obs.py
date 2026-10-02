@@ -1,31 +1,4 @@
-"""Request identity, structured logs, and metrics - with no new dependencies.
-
-V3 logged with ``logging.basicConfig`` and a human format. That is readable on
-one developer's terminal and unusable everywhere else: there is no way to tie
-three log lines to the same request, no way to find the slow endpoint, and no
-way to answer "how often does the matrix 409 because nobody ran the SWOT" short
-of grepping prose.
-
-Three things fix that, and all three are stdlib:
-
-**A request id on everything.** Taken from an inbound ``X-Request-ID`` when a
-proxy already assigned one - so a trace survives the hop - and generated
-otherwise. It goes on the response header, into every log line emitted while
-that request is in flight, and into the ``request_id`` field of any problem
-document, which is what makes a user's screenshot of an error actionable.
-
-**JSON logs.** One object per line, with the request id, route, method, status
-and duration. ``LOG_FORMAT=text`` restores the human format for local work,
-because JSON in a terminal is its own kind of unreadable.
-
-**Prometheus metrics, hand-rolled.** ``/metrics`` emits the standard text
-exposition format from three in-process collectors. A real deployment would use
-``prometheus_client``; that is one more dependency for about forty lines of
-formatting, and this project's tests run on a bare clone with pytest and
-nothing else. The limitation is stated in the endpoint's own docstring: these
-counters are per-process, so behind more than one worker you are reading one
-worker's view.
-"""
+"""Request identity, structured logs, and metrics - with no new dependencies."""
 
 from __future__ import annotations
 
@@ -41,9 +14,9 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.responses import Response
 
-# Context-local rather than thread-local: FastAPI runs handlers on an event
-# loop, so a thread can serve several requests and thread-locals would leak the
-# wrong id between them.
+# Context-local rather than thread-local: FastAPI runs handlers on an event loop, so
+# a thread can serve several requests and thread-locals would leak the wrong id
+# between them.
 _request_id: ContextVar[str] = ContextVar("request_id", default="-")
 _route: ContextVar[str] = ContextVar("route", default="-")
 
@@ -59,12 +32,9 @@ def new_request_id() -> str:
 
 
 # --------------------------------------------------------------------------
-# Metrics
-# --------------------------------------------------------------------------
+# Metrics --------------------------------------------------------------------------
 
-# Seconds. Chosen around what this application actually does: sub-10ms reads,
-# ~100ms scoring runs, and the multi-second tail where an LLM call or a Monte
-# Carlo lands.
+# Seconds.
 DEFAULT_BUCKETS = (0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0)
 
 
@@ -105,7 +75,8 @@ class Metrics:
 
     def reset(self) -> None:
         """Only used by tests. A process that resets its own counters in
-        production is a process that lies to its dashboard."""
+                production is a process that lies to its dashboard.
+        """
         with self._lock:
             self._counters.clear()
             self._gauges.clear()
@@ -168,8 +139,7 @@ METRICS = Metrics()
 
 
 # --------------------------------------------------------------------------
-# Logging
-# --------------------------------------------------------------------------
+# Logging --------------------------------------------------------------------------
 
 
 class JsonFormatter(logging.Formatter):
@@ -239,9 +209,9 @@ class ObservabilityMiddleware(BaseHTTPMiddleware):
             response = await call_next(request)
             status_code = response.status_code
         except Exception:
-            # The exception handlers turn known failures into responses, so
-            # anything arriving here is genuinely unhandled and worth a count
-            # of its own rather than being lost in the 5xx bucket.
+            # The exception handlers turn known failures into responses, so anything
+            # arriving here is genuinely unhandled and worth a count of its own
+            # rather than being lost in the 5xx bucket.
             METRICS.inc("http_unhandled_exceptions_total")
             logger.exception(
                 "unhandled exception",
@@ -250,9 +220,9 @@ class ObservabilityMiddleware(BaseHTTPMiddleware):
             raise
         finally:
             duration = time.perf_counter() - started
-            # The route TEMPLATE, not the path: a per-id label set is an
-            # unbounded cardinality explosion, which is the classic way to
-            # take down a metrics backend with your own instrumentation.
+            # The route TEMPLATE, not the path: a per-id label set is an unbounded
+            # cardinality explosion, which is the classic way to take down a metrics
+            # backend with your own instrumentation.
             route = request.scope.get("route")
             template = getattr(route, "path", request.url.path)
             _route.set(template)

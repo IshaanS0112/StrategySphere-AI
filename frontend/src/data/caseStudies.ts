@@ -1,16 +1,6 @@
 import type { CompanyDraft, CompetitorDraft } from "../api/client";
 
-/**
- * Demo presets.
- *
- * ⚠️ These are ILLUSTRATIVE COMPOSITES, not real companies and not figures
- * extracted from any filing. They exist so the pipeline can be exercised in one
- * click. They mirror `data/case_studies/*.json` in the repo root, which the
- * backend loader script reads — keep the two in sync if you edit either.
- *
- * For real analysis, replace them with figures from an annual report or a
- * published case study and record the source in `data_source`.
- */
+/** Demo presets. */
 export interface CaseStudy {
   key: string;
   label: string;

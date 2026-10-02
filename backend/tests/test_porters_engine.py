@@ -1,10 +1,4 @@
-"""Porter's Five Forces.
-
-The behaviour worth pinning hardest is what the engine does when it *cannot*
-score a force. Returning 3.0 for an unmeasurable force would be a guess wearing
-the same typeface as a computed HHI, which is the exact failure the whole
-project is built to avoid.
-"""
+"""Porter's Five Forces."""
 
 from __future__ import annotations
 

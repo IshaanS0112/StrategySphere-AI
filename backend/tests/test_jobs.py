@@ -1,9 +1,4 @@
-"""The job system: lifecycle, cancellation, deduplication, and the reaper.
-
-The reaper is the part worth testing hardest. A queue that can leave a row
-RUNNING forever is a queue people stop trusting, and the only way that bug
-surfaces in production is as a job that never finishes and nobody can explain.
-"""
+"""The job system: lifecycle, cancellation, deduplication, and the reaper."""
 
 from __future__ import annotations
 

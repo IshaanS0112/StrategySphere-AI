@@ -61,12 +61,7 @@ async def lifespan(_: FastAPI):
     settings_at_boot = get_settings()
     obs.configure_logging(settings_at_boot.log_level, settings_at_boot.log_format)
 
-    # V1 called Base.metadata.create_all here. That works while a schema is
-    # append-only and stops working the moment a column changes shape, which
-    # V2 needed. The app no longer creates its own schema: Alembic owns it, the
-    # container entrypoint runs `alembic upgrade head` before uvicorn starts,
-    # and a mismatch is now a loud startup error instead of a table that
-    # silently lacks the column the code expects.
+    # V1 called Base.metadata.create_all here.
     _assert_schema_present()
 
     settings = get_settings()
@@ -112,9 +107,9 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# Order matters: the observability middleware is added last, so it sits
-# OUTERMOST and therefore times and logs everything the others do - including
-# the cost of compression and the CORS preflights.
+# Order matters: the observability middleware is added last, so it sits OUTERMOST
+# and therefore times and logs everything the others do - including the cost of
+# compression and the CORS preflights.
 app.add_middleware(GZipMiddleware, minimum_size=1024)
 app.add_middleware(
     CORSMiddleware,
@@ -138,23 +133,13 @@ for module in (companies, analysis, strategy_v2, strategy_v3, jobs_router):
 
 @app.get("/health", tags=["meta"])
 def health() -> dict[str, object]:
-    """Liveness. Deliberately touches nothing.
-
-    A liveness probe that checks the database restarts the API when the
-    database hiccups, which converts a recoverable dependency failure into an
-    outage of its own making. Readiness is the probe that checks dependencies.
-    """
+    """Liveness. Deliberately touches nothing."""
     return {"status": "ok", "version": app.version, "uptime_seconds": round(time.time() - STARTED_AT, 1)}
 
 
 @app.get("/ready", tags=["meta"])
 def ready() -> dict[str, object]:
-    """Readiness: can this process actually serve a request right now?
-
-    Checks the things a request needs - a live connection, the migrated
-    schema, a loadable benchmark table - and reports each one separately so a
-    failing probe names its cause instead of just saying no.
-    """
+    """Readiness: can this process actually serve a request right now?"""
     from app.services import jobs
 
     checks: dict[str, object] = {}
@@ -199,12 +184,7 @@ def ready() -> dict[str, object]:
 
 @app.get("/metrics", tags=["meta"], include_in_schema=False)
 def metrics() -> Response:
-    """Prometheus text exposition.
-
-    Per-process counters: behind several workers this is one worker's view,
-    which is the standard caveat for in-process instrumentation and the reason
-    a real deployment scrapes every worker rather than a load-balanced address.
-    """
+    """Prometheus text exposition."""
     if not settings.metrics_enabled:
         raise errors.AppError(errors.NOT_CONFIGURED, "Metrics are disabled by configuration.")
     obs.METRICS.set_gauge("app_uptime_seconds", round(time.time() - STARTED_AT, 1))
@@ -213,12 +193,7 @@ def metrics() -> Response:
 
 @app.get("/methodology", tags=["meta"])
 def methodology(request: Request, response: Response) -> object:
-    """The parameter set currently in force.
-
-    Exposed as an endpoint because the honest claim this project makes - that
-    the scores are computed, not generated - is only checkable if the weights
-    and thresholds behind them are visible without reading the source.
-    """
+    """The parameter set currently in force."""
     provenance = cache.benchmark_table(settings.industry_benchmarks_path).provenance
     payload: dict[str, object] = {
         "frameworks": [
@@ -344,9 +319,8 @@ def methodology(request: Request, response: Response) -> object:
         ),
     }
 
-    # This payload changes only when configuration or the benchmark file does,
-    # and the dashboard requests it on every page load. An ETag turns that into
-    # a 304 with no body.
+    # This payload changes only when configuration or the benchmark file does, and
+    # the dashboard requests it on every page load.
     etag = cache.etag_for(payload)
     response.headers["ETag"] = etag
     response.headers["Cache-Control"] = "private, max-age=60"

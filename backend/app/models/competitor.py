@@ -1,3 +1,5 @@
+"""Competitors: the peer set a company is benchmarked against."""
+
 import uuid
 from datetime import datetime
 from typing import TYPE_CHECKING
@@ -23,9 +25,7 @@ class Competitor(Base):
     price_point: Mapped[float | None] = mapped_column(Float)
     market_share_pct: Mapped[float | None] = mapped_column(Float)
 
-    # {feature_name: score} on a shared 1-5 scale. Compared against the focal
-    # company's own feature_scores, so the two must use the same feature names;
-    # the pricing engine intersects the key sets and reports what it used.
+    # {feature_name: score} on a shared 1-5 scale.
     feature_scores: Mapped[dict] = mapped_column(JsonBlob, nullable=False, default=dict)
 
     # Same shape as Company.financial_data. Supplying it lets the SWOT engine

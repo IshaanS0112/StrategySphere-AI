@@ -1,11 +1,5 @@
 #!/usr/bin/env python3
-"""Run the backtest harness over a panel file.
-
-    python backend/scripts/run_validation.py data/validation/synthetic_demo_panel.json
-
-Runs the engine directly rather than over HTTP, so it works with nothing
-running. Pass --api to go through a live server instead.
-"""
+"""Run the backtest harness over a panel file."""
 
 from __future__ import annotations
 

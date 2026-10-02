@@ -1,33 +1,4 @@
-"""Validation harness: does the quadrant verdict predict anything?
-
-V1's README carried an admission — the attractiveness score had never been
-checked against real business outcomes, and the honest test would be a
-retrospective panel. This module is that test. It does not manufacture the
-answer; it makes the answer computable once someone supplies the data.
-
-**The design.** Give it a panel of companies scored at time T plus a realised
-outcome measured at T+n (revenue CAGR, TSR, margin change — anything ordinal).
-It reports:
-
-1. **Separation.** Mean and median outcome per quadrant. If the framework has
-   any predictive content, `INVEST_GROW` should beat `HARVEST_DIVEST`.
-2. **Rank correlation.** Spearman's rho between the composite position score
-   and the outcome, which is robust to the outcome's distribution and does not
-   assume linearity.
-3. **A permutation null.** The separation statistic recomputed thousands of
-   times against shuffled outcomes, giving an empirical p-value.
-
-**Point 3 is the one that matters and the one usually missing.** With a panel of
-twenty companies split across three quadrants, a gap between group means of
-several percentage points arises constantly by chance. Reporting the gap without
-the null is how a backtest "validates" a model that is indistinguishable from
-noise. The permutation test asks the only useful question: how often would
-shuffled outcomes produce a gap at least this large?
-
-**No data ships with this.** A synthetic panel is included for testing the
-harness itself and is labelled as such. Real validation needs filings, and
-`data/validation/README.md` documents how to assemble a panel from EDGAR.
-"""
+"""Validation harness: does the quadrant verdict predict anything?"""
 
 from __future__ import annotations
 
@@ -60,12 +31,7 @@ class PanelRow:
 
     @property
     def position_score(self) -> float:
-        """Composite position: the product of the two axes.
-
-        Product rather than sum because GE-McKinsey's rule is conjunctive —
-        being strong on one axis and weak on the other is not the same as being
-        middling on both, and a sum cannot tell those apart.
-        """
+        """Composite position: the product of the two axes."""
         return self.attractiveness * self.strength
 
 
@@ -226,32 +192,18 @@ def _verdict(result: ValidationResult) -> str:
 
 
 # --------------------------------------------------------------------------
-# V3: the comparison that makes a positive result mean anything
-#
-# V2's README already said it: "even a significant result would be association,
-# not causation, until it beats a baseline model using revenue growth alone."
-# Running the framework against a baseline needs a permutation p-value for a
-# rank correlation, not just for the quadrant separation, because a panel can
-# fail to contain both extreme quadrants while its continuous position score
-# still predicts perfectly well. Both additions below are additive: nothing in
-# the V2 harness changed.
-# --------------------------------------------------------------------------
+# V3: the comparison that makes a positive result mean anything V2's README already
+# said it: "even a significant result would be association, not causation, until it
+# beats a baseline model using revenue growth alone." Running the framework against
+# a baseline needs a permutation p-value for a rank correlation, not just for the
+# quadrant separation, because a panel can fail to contain both extreme quadrants
+# while its continuous position score still predicts perfectly well.
 
 
 def spearman_permutation_p(
     xs: list[float], ys: list[float], settings: Settings
 ) -> float | None:
-    """Empirical p-value for Spearman's rho under label shuffling.
-
-    The null is "x carries no information about y". Ranks of both sides are
-    computed once and the *rank vector* is shuffled rather than the raw values,
-    which is exactly equivalent - rank is invariant under the permutation - and
-    turns an O(permutations * n log n) test into O(permutations * n).
-
-    Two-sided: the count is on |rho|, because a strongly REVERSED association
-    is also a rejection of "no information", and a one-sided test here would
-    quietly hide a framework that predicts the opposite of what it claims.
-    """
+    """Empirical p-value for Spearman's rho under label shuffling."""
     observed = spearman(xs, ys)
     if observed is None:
         return None
@@ -284,13 +236,7 @@ def spearman_permutation_p(
 def group_separation(
     labels: list[str], outcomes: list[float], high: str, low: str
 ) -> float | None:
-    """``mean(outcome | high) - mean(outcome | low)`` for any two labels.
-
-    Generalises the quadrant separation so a panel that contains only two of
-    the three quadrants can still be tested. It cannot invent the missing
-    group: with either side empty it returns None, which is the honest answer
-    and the one the caller has to report.
-    """
+    """``mean(outcome | high) - mean(outcome | low)`` for any two labels."""
     top = [o for label, o in zip(labels, outcomes) if label == high]
     bottom = [o for label, o in zip(labels, outcomes) if label == low]
     if not top or not bottom:

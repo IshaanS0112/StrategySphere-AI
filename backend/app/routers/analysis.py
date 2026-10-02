@@ -1,11 +1,4 @@
-"""The four analysis stages.
-
-Each stage is a POST that computes and persists, plus a GET that returns the
-latest stored result. Ordering is enforced with 409s rather than silently
-recomputing an upstream stage: the matrix must be built on the SWOT grid the
-user actually saw, and a hidden recompute is how a dashboard ends up showing a
-quadrant that no longer matches the grid above it.
-"""
+"""The four analysis stages."""
 
 from __future__ import annotations
 
@@ -106,12 +99,7 @@ def get_pricing_recommendation(company: CurrentCompany, db: DbSession):
 
 @router.post("/{company_id}/generate-strategy-report", response_model=StrategyReportOut)
 def generate_strategy_report(company: CurrentCompany, db: DbSession, settings: AppSettings):
-    """Narrate the stored structured context.
-
-    Never returns 5xx for an LLM problem: if the model call fails, times out, or
-    returns malformed JSON, the templated fallback is persisted instead and the
-    response carries ``narrative_source = "template_fallback"``.
-    """
+    """Narrate the stored structured context."""
     if queries.latest_swot(db, company.id) is None or queries.latest_matrix(db, company.id) is None:
         raise errors.stage_order(
             "Run the SWOT analysis and the market attractiveness matrix first. "

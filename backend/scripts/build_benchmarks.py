@@ -1,24 +1,5 @@
 #!/usr/bin/env python3
-"""Build the industry benchmark table from SEC EDGAR XBRL filings.
-
-    export EDGAR_USER_AGENT="Your Name you@example.com"
-    python backend/scripts/build_benchmarks.py --period CY2024 \
-        --out data/benchmarks/edgar_CY2024.json
-
-Then point the app at it:
-
-    export INDUSTRY_BENCHMARKS_PATH=data/benchmarks/edgar_CY2024.json
-
-The SEC requires automated access to declare a User-Agent with contact details
-and rate-limits it. There is no default User-Agent; the client refuses to be
-constructed without one. Every response is cached under --cache-dir, so a
-second run of the same period costs no requests at all, and --offline serves
-the cache only and fails loudly on a miss.
-
-This is a long-running job the first time: one frames request per candidate tag
-per period, then one submissions request per company in the SIC sample. At the
-default 5 requests/second a 600-company sample takes about two minutes.
-"""
+"""Build the industry benchmark table from SEC EDGAR XBRL filings."""
 
 from __future__ import annotations
 

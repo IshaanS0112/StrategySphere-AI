@@ -1,15 +1,4 @@
-"""V2: period dimension, Porter's Five Forces, and scenarios
-
-Revision ID: 0002_v2_periods_porters_scenarios
-Revises: 0001_v1_baseline
-Create Date: 2026-09-08
-
-Additive throughout. The three new columns on ``companies`` are nullable, so
-every V1 row remains valid and simply has no timeline — a company with no
-``entity_key`` behaves exactly as it did in V1. Nothing is backfilled, because
-inventing a period label for a row that never had one would be fabricating
-data, and a NULL that reads as "this was a standalone snapshot" is true.
-"""
+"""V2: period dimension, Porter's Five Forces, and scenarios"""
 from __future__ import annotations
 
 import sqlalchemy as sa
@@ -42,9 +31,9 @@ def upgrade() -> None:
             nullable=False,
         ),
         sa.Column("forces", JSONB, nullable=False),
-        # Nullable: an industry where fewer than two forces could be scored has
-        # no meaningful composite, and 0.0 would read as "no competitive
-        # pressure" rather than "not enough data".
+        # Nullable: an industry where fewer than two forces could be scored has no
+        # meaningful composite, and 0.0 would read as "no competitive pressure"
+        # rather than "not enough data".
         sa.Column("composite_score", sa.Float()),
         sa.Column("industry_attractiveness", sa.String(20)),
         sa.Column("forces_scored", sa.Integer(), nullable=False, server_default="0"),

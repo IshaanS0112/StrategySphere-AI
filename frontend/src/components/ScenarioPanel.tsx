@@ -2,15 +2,7 @@ import { useState } from "react";
 
 import type { Scenario } from "../api/types";
 
-/**
- * Build a what-if, then read the delta against the stored baseline.
- *
- * The form deliberately offers only the market inputs the matrix actually
- * reads, plus competitor add/remove. An override key the engine does not know
- * is rejected server-side rather than silently ignored — a typo that does
- * nothing produces a scenario reading "no change", which looks like evidence
- * the verdict is stable.
- */
+/** Build a what-if, then read the delta against the stored baseline. */
 
 const MARKET_FIELDS: { key: string; label: string }[] = [
   { key: "market_growth_pct", label: "Market growth %" },

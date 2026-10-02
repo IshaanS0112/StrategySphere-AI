@@ -1,10 +1,4 @@
-"""V2 endpoints: Porter's Five Forces, sensitivity, scenarios, timelines, validation.
-
-Same discipline as V1's stages. Anything that reads a prior stage's result reads
-the **stored** row rather than recomputing, so what the API returns is always
-consistent with what the dashboard is already showing. Ordering violations are
-409s with an explanation rather than a silent recompute.
-"""
+"""V2 endpoints: Porter's Five Forces, sensitivity, scenarios, timelines, validation."""
 
 from __future__ import annotations
 
@@ -39,11 +33,7 @@ _NEEDS_MATRIX = (
 
 @router.post("/companies/{company_id}/porters-analysis", response_model=PortersAnalysisOut)
 def create_porters_analysis(company: CurrentCompany, db: DbSession, settings: AppSettings):
-    """Score the five forces.
-
-    Independent of the SWOT/matrix chain: Porter describes industry structure,
-    not the firm's position within it, so it needs no upstream stage.
-    """
+    """Score the five forces."""
     if not (company.market_data or company.financial_data or company.competitors):
         raise errors.AppError(
             errors.INSUFFICIENT_INPUT,
@@ -71,11 +61,7 @@ def get_porters_analysis(company: CurrentCompany, db: DbSession):
 
 @router.get("/companies/{company_id}/sensitivity")
 def get_sensitivity(company: CurrentCompany, db: DbSession, settings: AppSettings):
-    """Exact minimum single-input change that would flip the quadrant.
-
-    A GET rather than a POST: it derives from the stored matrix result and
-    persists nothing, so it is safely repeatable and cacheable.
-    """
+    """Exact minimum single-input change that would flip the quadrant."""
     if queries.latest_matrix(db, company.id) is None:
         raise errors.stage_order(_NEEDS_MATRIX, needs="matrix")
     return analysis_pipeline.compute_sensitivity(db, company, settings)
@@ -174,12 +160,7 @@ def get_entity_timeline(
 
 @router.post("/validation/backtest")
 def run_backtest(payload: ValidationRequest, settings: AppSettings):
-    """Score a labelled panel of companies against realised outcomes.
-
-    Stateless by design: the panel is supplied in the request rather than read
-    from the database, because validating the framework is a different activity
-    from analysing a company and should not require loading one first.
-    """
+    """Score a labelled panel of companies against realised outcomes."""
     from app.services.validation import PanelRow
 
     rows = [

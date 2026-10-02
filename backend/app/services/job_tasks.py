@@ -1,13 +1,4 @@
-"""The jobs this application knows how to run.
-
-Kept apart from the runner so the runner stays about scheduling and this stays
-about work. Each function takes a ``JobContext`` it reports progress through
-and checks for cancellation, and returns a JSON-serialisable summary that ends
-up in ``jobs.result``.
-
-Every one of these is a long, network-bound, rate-limited task. That is the
-whole reason the job system exists.
-"""
+"""The jobs this application knows how to run."""
 
 from __future__ import annotations
 
@@ -28,14 +19,7 @@ PANEL_BUILD = "validation.panel"
 
 @register(BENCHMARK_BUILD)
 def build_benchmarks(context: JobContext, params: dict[str, Any], settings: Settings) -> dict[str, Any]:
-    """Rebuild the industry benchmark table from SEC XBRL filings.
-
-    Minutes of rate-limited requests, which is exactly why it is a job. The
-    file is written atomically - to a temporary name, then renamed - so a
-    cancellation or a crash halfway through cannot leave the live table
-    truncated. A rename on the same filesystem is atomic; a half-written JSON
-    file that the API then loads at startup is not a hypothetical.
-    """
+    """Rebuild the industry benchmark table from SEC XBRL filings."""
     from app.services.edgar.benchmark_builder import build_benchmark_table
     from app.services.edgar.client import EdgarClient
 
@@ -54,9 +38,8 @@ def build_benchmarks(context: JobContext, params: dict[str, Any], settings: Sett
         concurrency=settings.edgar_concurrency,
     )
 
-    # The builder reports free-text progress; translate it to a fraction so the
-    # UI has something to draw. The stages are known, so this is a real
-    # estimate rather than a bar that jumps to 90% and sits there.
+    # The builder reports free-text progress; translate it to a fraction so the UI
+    # has something to draw.
     state = {"step": 0}
     total_steps = 9
 
@@ -82,10 +65,9 @@ def build_benchmarks(context: JobContext, params: dict[str, Any], settings: Sett
     temporary.write_text(json.dumps(result.payload(), indent=2, sort_keys=True))
     temporary.replace(out_path)
 
-    # The live table is cached on (path, mtime, size), so a rebuild of a
-    # DIFFERENT path needs no invalidation and a rebuild of the live one is
-    # picked up automatically. Dropping it anyway costs one parse and removes
-    # any doubt.
+    # The live table is cached on (path, mtime, size), so a rebuild of a DIFFERENT
+    # path needs no invalidation and a rebuild of the live one is picked up
+    # automatically.
     cache.invalidate_benchmark_table()
 
     provenance = result.provenance
@@ -106,12 +88,7 @@ def build_benchmarks(context: JobContext, params: dict[str, Any], settings: Sett
 
 @register(PANEL_BUILD)
 def build_panel(context: JobContext, params: dict[str, Any], settings: Settings) -> dict[str, Any]:
-    """Assemble a validation panel by scoring filings through the real pipeline.
-
-    Thin on purpose: the assembly logic lives in the script so the CLI and the
-    job cannot drift into two subtly different panels, which would make the
-    published validation result unreproducible.
-    """
+    """Assemble a validation panel by scoring filings through the real pipeline."""
     import subprocess
     import sys
 

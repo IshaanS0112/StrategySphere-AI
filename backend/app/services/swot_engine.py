@@ -1,27 +1,4 @@
-"""SWOT scoring engine.
-
-A SWOT that an LLM brainstorms is a paragraph of vibes. This one is arithmetic.
-
-**Strengths and weaknesses** come from comparing the company's reported
-financial metrics against a benchmark — the median of the supplied peer set
-where there are enough peers, otherwise a configured industry band. The signed
-relative deviation from that benchmark is bucketed into an impact score of 1-5.
-A metric within the neutral band of its benchmark produces no factor at all,
-which is the point: if every metric always yields a factor, the grid fills with
-noise and the strength average becomes meaningless.
-
-**Opportunities and threats** come from market-level inputs — growth, size, and
-the competitive intensity derived from the competitor set's HHI — bucketed
-through the same band logic.
-
-**Analyst-supplied qualitative factors** (brand, distribution, talent) pass
-through untouched but are tagged ``source = "analyst_input"``, so a reader can
-always separate a computed comparison from a human judgement. They are not
-laundered into looking like measurements.
-
-Every factor carries the benchmark it was scored against inside its evidence
-string. Nothing here calls a language model.
-"""
+"""SWOT scoring engine."""
 
 from __future__ import annotations
 
@@ -89,12 +66,7 @@ class SwotResult:
 # --------------------------------------------------------------------------
 
 def favourable_deviation_pct(value: float, benchmark: float, higher_is_better: bool) -> float | None:
-    """Signed deviation from benchmark, in percent, positive = good for the firm.
-
-    Returns ``None`` when the benchmark is zero — a relative comparison against
-    zero is undefined, and returning a huge number instead would manufacture a
-    5-impact factor out of a missing benchmark.
-    """
+    """Signed deviation from benchmark, in percent, positive = good for the firm."""
     if benchmark == 0:
         return None
     deviation = (value - benchmark) / abs(benchmark) * 100.0
@@ -154,10 +126,9 @@ def _score_financial_metrics(
             trace.append({"metric": rule.key, "status": "skipped", "reason": "not reported"})
             continue
 
-        # V3: the table lookup returns a point carrying its own basis and the
-        # sample size behind it, so an EDGAR sector median can say n=148 in the
-        # evidence string while a placeholder band still says "industry
-        # benchmark". The peer-set path is untouched.
+        # V3: the table lookup returns a point carrying its own basis and the sample
+        # size behind it, so an EDGAR sector median can say n=148 in the evidence
+        # string while a placeholder band still says "industry benchmark".
         benchmark = bench.peer_median(
             peer_financials, rule.key, settings.swot_min_peers_for_benchmark
         )
@@ -414,9 +385,9 @@ def run_swot_analysis(
     settings: Settings,
 ) -> SwotResult:
     """Score a full SWOT grid. Deterministic: same inputs, same output, no LLM."""
-    # Cached on (path, mtime, size): the table is parsed once per version of
-    # the file rather than once per scoring run, and a rebuilt table is picked
-    # up on the next call with no restart.
+    # Cached on (path, mtime, size): the table is parsed once per version of the
+    # file rather than once per scoring run, and a rebuilt table is picked up on the
+    # next call with no restart.
     benchmark_table = cache.benchmark_table(settings.industry_benchmarks_path)
     peer_financials = [
         c.get("financial_data") or {} for c in competitors if isinstance(c, dict)

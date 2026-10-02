@@ -1,10 +1,4 @@
-"""Floors, harvest contribution, greedy order, and the marginal unit.
-
-The allocation rule is project-defined, so these tests are not checking it
-against a published standard - there is no published standard, which is the
-whole point. They check that the rule implemented is the rule documented, that
-it fails loudly where it says it will, and that it is deterministic.
-"""
+"""Floors, harvest contribution, greedy order, and the marginal unit."""
 
 from __future__ import annotations
 

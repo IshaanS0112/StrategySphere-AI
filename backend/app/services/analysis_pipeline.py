@@ -1,11 +1,4 @@
-"""Orchestration between the ORM and the pure engines.
-
-The engines in this package take dicts and return dataclasses. They never touch
-a database session, which is what lets the whole test suite run against them
-directly with no container up. This module is the only place that knows about
-both sides: it flattens ORM rows into plain dicts, calls the engines, and writes
-the results back.
-"""
+"""Orchestration between the ORM and the pure engines."""
 
 from __future__ import annotations
 
@@ -88,12 +81,7 @@ def run_swot(db: Session, company: Company, settings: Settings) -> SwotAnalysis:
 
 
 def swot_result_from_row(row: SwotAnalysis) -> SwotResult:
-    """Rehydrate a stored SWOT row into the dataclass the engines expect.
-
-    Reading the stored row rather than recomputing is deliberate: the matrix
-    must be built on the exact grid that was persisted and shown to the user,
-    not on a second analysis that may have drifted if inputs changed in between.
-    """
+    """Rehydrate a stored SWOT row into the dataclass the engines expect."""
     from app.enums import SwotCategory
     from app.services.swot_engine import SwotFactor
 
@@ -228,8 +216,6 @@ def _attractiveness_result_from_row(row: MarketAttractiveness) -> Attractiveness
 def run_report(db: Session, company: Company, settings: Settings) -> StrategyReport:
     """Build the structured context, then narrate it. Never raises for LLM problems."""
     # Three targeted LIMIT 1 reads rather than three full collection loads.
-    # A company that has been re-run twenty times used to materialise sixty
-    # rows here, each carrying a kilobyte-scale calculation_basis, to use three.
     swot_row = queries.latest_swot(db, company.id)
     attractiveness_row = queries.latest_matrix(db, company.id)
     pricing_row = queries.latest_pricing(db, company.id)
@@ -259,8 +245,7 @@ def run_report(db: Session, company: Company, settings: Settings) -> StrategyRep
 
 
 # --------------------------------------------------------------------------
-# V2
-# --------------------------------------------------------------------------
+# V2 --------------------------------------------------------------------------
 
 
 def run_porters(db: Session, company: Company, settings: Settings) -> PortersAnalysis:
@@ -294,12 +279,7 @@ def run_porters(db: Session, company: Company, settings: Settings) -> PortersAna
 
 
 def compute_sensitivity(db: Session, company: Company, settings: Settings) -> dict:
-    """Sensitivity over the latest stored matrix result.
-
-    Reads the persisted row rather than recomputing, for the same reason the
-    report generator does: the analysis must describe the placement the user is
-    looking at, not a fresh one that may have drifted.
-    """
+    """Sensitivity over the latest stored matrix result."""
     from app.services.sensitivity import run_sensitivity_analysis
 
     row = queries.latest_matrix(db, company.id)
@@ -394,9 +374,7 @@ def build_entity_timeline(db: Session, entity_key: str, settings: Settings) -> d
 
     companies = queries.companies_for_entity(db, entity_key)
     # One windowed query for every period's latest matrix row, instead of one
-    # full-collection load per company inside the loop. This was the clearest
-    # N+1 in the codebase: a ten-period entity issued eleven queries and
-    # materialised every matrix row it had ever stored.
+    # full-collection load per company inside the loop.
     latest_by_company = queries.latest_for_many(
         db, MarketAttractiveness, [c.id for c in companies]
     )
@@ -430,8 +408,7 @@ def build_entity_timeline(db: Session, entity_key: str, settings: Settings) -> d
 
 
 # --------------------------------------------------------------------------
-# V3
-# --------------------------------------------------------------------------
+# V3 --------------------------------------------------------------------------
 
 
 def run_uncertainty(
@@ -442,12 +419,7 @@ def run_uncertainty(
     overrides: dict | None = None,
     persist_inputs: bool = False,
 ) -> UncertaintyAnalysis:
-    """Monte Carlo over the latest stored matrix result.
-
-    Reads the persisted matrix row rather than recomputing, for the same reason
-    the report generator and the sensitivity analysis do: the probabilities
-    must describe the placement the user is looking at.
-    """
+    """Monte Carlo over the latest stored matrix result."""
     from app.services.uncertainty import run_uncertainty_analysis
 
     row = queries.latest_matrix(db, company.id)
@@ -489,22 +461,13 @@ def run_uncertainty(
 
 
 def portfolio_units(db: Session, portfolio: Portfolio) -> tuple[list, list[str]]:
-    """Flatten members into engine units, reporting the ones that cannot play.
-
-    A member whose company has never been through the matrix has no position on
-    the grid, so it cannot be ranked. It is excluded and named rather than
-    given a neutral position, which would put an unscored unit ahead of a
-    genuinely weak one.
-    """
+    """Flatten members into engine units, reporting the ones that cannot play."""
     from app.services.portfolio import PortfolioUnit
 
     units: list[PortfolioUnit] = []
     unscored: list[str] = []
 
-    # Two windowed queries for the whole portfolio. The previous version was an
-    # N+1 twice over - a matrix collection load AND an uncertainty collection
-    # load per member - so a twelve-unit portfolio issued twenty-five queries
-    # to build twelve rows.
+    # Two windowed queries for the whole portfolio.
     company_ids = [m.company_id for m in portfolio.members]
     matrices = queries.latest_for_many(db, MarketAttractiveness, company_ids)
     entropies = queries.latest_for_many(db, UncertaintyAnalysis, company_ids)

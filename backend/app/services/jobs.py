@@ -1,38 +1,4 @@
-"""Background jobs, because some of this work does not fit in a request.
-
-Building the benchmark table makes hundreds of rate-limited requests to
-data.sec.gov and takes minutes. V3 handled that by refusing to expose it at
-all: ``POST /benchmarks/build`` returned 501 with instructions to run a CLI.
-That was the right call over doing it *inside* a request handler - a five
-minute synchronous HTTP call is not an API, it is a timeout with a body - but
-"run this by hand on the server" is not a feature either.
-
-This is the missing middle: the request enqueues work and returns **202 with a
-job id**, a worker pool runs it, and the client polls. The pieces that make it
-a job system rather than a thread:
-
-* **The row is the source of truth**, not the future. A job's state lives in
-  ``jobs``, so a restart does not lose the record of what ran, what it
-  produced, and what it cost.
-* **Heartbeats.** A worker updates ``heartbeat_at`` as it progresses. A job
-  whose heartbeat has gone stale is reaped and marked FAILED, so a crashed
-  worker cannot leave a row RUNNING forever - which is the failure mode that
-  makes people distrust a queue.
-* **Cancellation is cooperative.** ``POST /jobs/{id}/cancel`` sets a flag the
-  running function checks. Killing a thread mid-write is how you get a
-  half-written benchmark file.
-* **Progress and logs.** Long jobs report a fraction and a message, so the UI
-  can show "classified 900/1500" instead of a spinner.
-* **Deduplication.** An identical job already queued or running is returned
-  rather than started twice, because two concurrent EDGAR rebuilds writing the
-  same file is a corrupted file.
-
-**What this is not.** It is an in-process pool, so jobs do not survive a
-restart mid-flight (they are reaped and marked FAILED on the next boot) and
-they do not spread across workers. That is the honest trade for zero new
-infrastructure. The seam is ``submit()``: swapping in Celery or RQ means
-changing this module and nothing that calls it.
-"""
+"""Background job runner: a thread pool whose source of truth is a table row."""
 
 from __future__ import annotations
 
@@ -78,12 +44,7 @@ class JobContext:
             raise JobCancelled()
 
     def progress(self, fraction: float, message: str = "") -> None:
-        """Report progress, and heartbeat while doing it.
-
-        Writes are throttled to once a second: a job that updates a row on
-        every one of fifteen hundred EDGAR calls spends more time in the
-        database than on the work.
-        """
+        """Report progress, and heartbeat while doing it."""
         self.check_cancelled()
         self._progress = max(0.0, min(1.0, float(fraction)))
         if message:
@@ -119,8 +80,7 @@ def register(kind: str) -> Callable[[JobFunc], JobFunc]:
 
 
 # --------------------------------------------------------------------------
-# Runner
-# --------------------------------------------------------------------------
+# Runner --------------------------------------------------------------------------
 
 _executor: ThreadPoolExecutor | None = None
 _cancels: dict[uuid.UUID, threading.Event] = {}
@@ -131,11 +91,7 @@ _settings: Settings | None = None
 
 
 def _update(job_id: uuid.UUID, **fields: Any) -> None:
-    """Write job fields in their own short-lived session.
-
-    A worker must not share the request's session: the request is long gone by
-    the time a five-minute job writes its third progress update.
-    """
+    """Write job fields in their own short-lived session."""
     with SessionLocal() as db:
         row = db.get(Job, job_id)
         if row is None:
@@ -286,12 +242,7 @@ def submit(
     settings: Settings,
     dedupe: bool = True,
 ) -> Job:
-    """Enqueue a job, or return the identical one already in flight.
-
-    Deduplication is on ``(kind, params)`` across QUEUED and RUNNING. Two
-    concurrent EDGAR rebuilds would write the same file from two threads, and
-    the second caller almost always wants the first one's result anyway.
-    """
+    """Enqueue a job, or return the identical one already in flight."""
     from sqlalchemy import select
 
     if kind not in _REGISTRY:
@@ -338,20 +289,7 @@ def submit(
 
 
 def cancel(db, job_id: uuid.UUID) -> bool:
-    """Ask a job to stop. Returns False if it was already finished.
-
-    The ownership rule is what makes this safe: **whoever is running the job
-    writes its terminal state.** If a worker has the job, cancelling only sets
-    the flag and the worker records CANCELLED when it next checks. Only a job
-    that no worker has claimed is written to directly here.
-
-    That rule is not decorative. Without it, this function read ``row.state``
-    from the caller's session - which can be a cached QUEUED while the worker
-    has already moved the row to RUNNING in its own session - took the "never
-    started" branch, and overwrote the worker's state from a second connection.
-    Two writers, last one wins, and the job's recorded outcome depended on
-    thread timing.
-    """
+    """Ask a job to stop. Returns False if it was already finished."""
     row = db.get(Job, job_id)
     if row is None:
         return False
@@ -382,9 +320,8 @@ def cancel(db, job_id: uuid.UUID) -> bool:
         db.commit()
         return True
 
-    # RUNNING with no cancel event: the worker died between claiming the row
-    # and registering, or this process is not the one running it. The reaper
-    # owns that case; saying True here would promise a stop nobody will make.
+    # RUNNING with no cancel event: the worker died between claiming the row and
+    # registering, or this process is not the one running it.
     return False
 
 

@@ -1,11 +1,4 @@
-"""V3: portfolios, their members, and the allocation runs over them.
-
-A portfolio is a named set of business units competing for one budget. A member
-points at an existing ``companies`` row — which, since V2, is a company *as
-reported for one period* — rather than duplicating its identity or its scores.
-That is what keeps a unit's position on the portfolio grid identical to the one
-its own page shows: there is only one scored row, and both views read it.
-"""
+"""V3: portfolios, their members, and the allocation runs over them."""
 
 import uuid
 from datetime import datetime
@@ -27,9 +20,7 @@ class Portfolio(Base):
     name: Mapped[str] = mapped_column(String(200), nullable=False)
     description: Mapped[str | None] = mapped_column(String(1000))
 
-    # The default budget for this portfolio. Each allocation run stores the
-    # budget it was actually computed against, so changing this never rewrites
-    # the history of what was decided.
+    # The default budget for this portfolio.
     budget: Mapped[float] = mapped_column(Float, nullable=False)
 
     created_at: Mapped[datetime] = mapped_column(
@@ -57,10 +48,7 @@ class PortfolioMember(Base):
         ForeignKey("companies.id", ondelete="CASCADE"), nullable=False, index=True
     )
 
-    # Bubble area on the grid, and the base the harvest contribution is taken
-    # from. Nullable: a unit can be scored without disclosing a revenue figure,
-    # and a HARVEST_DIVEST unit with no revenue simply contributes nothing and
-    # says so rather than contributing a guess.
+    # Bubble area on the grid, and the base the harvest contribution is taken from.
     revenue: Mapped[float | None] = mapped_column(Float)
 
     capital_requested: Mapped[float] = mapped_column(Float, nullable=False)
@@ -73,13 +61,7 @@ class PortfolioMember(Base):
 
 
 class AllocationRun(Base):
-    """One budget-constrained allocation over one portfolio.
-
-    ``calculation_basis`` carries the priority formula, the allocation order and
-    the PROJECT-DEFINED label, so a stored run can be re-derived by hand from
-    the row that contains it — the same contract every other result table here
-    honours.
-    """
+    """One budget-constrained allocation over one portfolio."""
 
     __tablename__ = "allocation_runs"
 
@@ -93,9 +75,7 @@ class AllocationRun(Base):
     # Per member: requested, floor, allocated, priority, outcome and the reason.
     allocations: Mapped[list] = mapped_column(JsonBlob, nullable=False, default=list)
     unfunded: Mapped[list] = mapped_column(JsonBlob, nullable=False, default=list)
-    # The highest-priority unit that did not get its full request. Null when
-    # everything was funded, which is a different statement from "nobody missed
-    # out narrowly".
+    # The highest-priority unit that did not get its full request.
     marginal_unit: Mapped[dict | None] = mapped_column(JsonBlob)
 
     harvest_contribution: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)

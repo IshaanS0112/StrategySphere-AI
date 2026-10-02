@@ -1,8 +1,4 @@
-"""The client's three load-bearing behaviours: identity, rate, and cache.
-
-None of these tests touch the network. The transport is injected; the one test
-that cares about the real one asserts it is never reached.
-"""
+"""The client's three load-bearing behaviours: identity, rate, and cache."""
 
 from __future__ import annotations
 
@@ -67,10 +63,7 @@ class TestRateLimiting:
             now[0] += seconds
 
         bucket = TokenBucket(5.0, clock=clock, sleep=sleep)
-        # One free token, then strict pacing at 1/rate. A bucket seeded with
-        # `rate` tokens would let five fire instantly and then refill at five a
-        # second, putting up to TEN inside one second at a configured five -
-        # which is not a defensible reading of a published per-second limit.
+        # One free token, then strict pacing at 1/rate.
         assert bucket.take() == 0.0
         for _ in range(4):
             assert bucket.take() == pytest.approx(0.2, abs=1e-9)
@@ -254,13 +247,7 @@ class TestEndpointUrls:
 
 
 class TestConcurrency:
-    """Concurrency must overlap latency without ever raising the outbound rate.
-
-    This is the test that matters for compliance. The whole justification for
-    fetching in parallel is that the token bucket, not the thread count,
-    decides how fast requests leave this process - so that claim is asserted
-    rather than assumed.
-    """
+    """Concurrency must overlap latency without ever raising the outbound rate."""
 
     def test_the_rate_is_never_exceeded_under_concurrency(self, tmp_path):
         import threading
@@ -286,9 +273,7 @@ class TestConcurrency:
         client.get_many(urls)
 
         assert len(stamps) == 40
-        # The bucket allows a burst of `rate` and then paces. Check the tail,
-        # after the initial burst is spent: no one-second window may contain
-        # more than the configured rate.
+        # The bucket allows a burst of `rate` and then paces.
         ordered = sorted(stamps)
         window = 1.0
         for index, start in enumerate(ordered):
@@ -351,8 +336,6 @@ class TestConcurrency:
         )
         urls = [f"https://data.sec.gov/submissions/CIK{i:010d}.json" for i in range(60)]
         client.get_many(urls)
-        # Unlocked += on a shared counter loses updates under threads. It would
-        # not crash; it would just quietly under-report what this process did
-        # to a public API, which is the number compliance rests on.
+        # Unlocked += on a shared counter loses updates under threads.
         assert client.stats.requests_made == 60
         assert client.stats.cache_writes == 60

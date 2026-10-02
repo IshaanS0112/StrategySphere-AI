@@ -1,35 +1,4 @@
-"""Porter's Five Forces.
-
-Porter published this in *How Competitive Forces Shape Strategy* (Harvard
-Business Review, 1979). The claim is structural: an industry's long-run
-profitability is set by five forces, and a firm's position is only worth as
-much as the structure it sits in allows.
-
-**The honest problem with implementing it.** Porter's framework is qualitative.
-Three of the five forces have no defensible proxy in the data this system
-holds — a company's balance sheet says nothing about how easily its customers
-could switch to a substitute product. Two of them do have real proxies, and one
-sits in between.
-
-This module therefore does the only thing that keeps the output meaningful: it
-computes what is computable, accepts analyst judgement for the rest, and tags
-**every force with its source** so a reader can tell a measured HHI from a
-typed-in opinion at a glance. A force with neither a proxy nor an input comes
-back ``UNAVAILABLE`` rather than defaulting to 3.
-
-| Force | How it is scored here |
-|---|---|
-| Competitive rivalry | **Computed.** HHI concentration, competitor count, price dispersion. |
-| Threat of new entrants | **Partially computed.** Industry margin and concentration set a base; analyst capital-intensity and regulatory-barrier inputs adjust it. |
-| Supplier power | **Partially computed.** Input cost share (1 − gross margin) sets a base; analyst supplier-concentration input adjusts it. |
-| Buyer power | **Analyst input.** Buyer concentration and switching cost. No proxy exists in this data. |
-| Threat of substitutes | **Analyst input.** No proxy exists in this data. |
-
-Scores run 1-5 where **higher means a stronger force**, i.e. worse for
-incumbents. That direction is the opposite of the GE-McKinsey attractiveness
-axis and is stated in every payload, because silently flipping a scale between
-two frameworks on the same dashboard is how a reader misreads both.
-"""
+"""Porter's Five Forces."""
 
 from __future__ import annotations
 
@@ -114,12 +83,7 @@ def _collect(market_data: dict, keys: list[str]) -> tuple[dict[str, float], list
 # --------------------------------------------------------------------------
 
 def score_rivalry(concentration: ConcentrationResult) -> ForceResult:
-    """Reuses the intensity already derived from HHI for the GE-McKinsey axis.
-
-    Deliberately the *same* number rather than a second, independently derived
-    rivalry score. Two different rivalry figures on one dashboard, both correct
-    by their own logic, is worse than one figure used twice.
-    """
+    """Reuses the intensity already derived from HHI for the GE-McKinsey axis."""
     if concentration.hhi is None:
         return ForceResult(
             force=PorterForce.COMPETITIVE_RIVALRY,
@@ -154,13 +118,7 @@ def score_rivalry(concentration: ConcentrationResult) -> ForceResult:
 def score_new_entrants(
     market_data: dict, concentration: ConcentrationResult, settings: Settings
 ) -> ForceResult:
-    """A profitable, fragmented industry invites entry; barriers hold it off.
-
-    Base from structure: high industry margin raises the prize, low
-    concentration signals nothing structural keeping entrants out. Analyst
-    inputs for capital intensity and regulatory protection then adjust it,
-    because neither is visible in a competitor table.
-    """
+    """A profitable, fragmented industry invites entry; barriers hold it off."""
     industry_margin = _num(market_data.get("industry_operating_margin_pct"))
     analyst, missing = _collect(market_data, ["capital_intensity", "regulatory_barrier"])
 
@@ -236,13 +194,7 @@ def score_new_entrants(
 def score_supplier_power(
     financial_data: dict, market_data: dict, settings: Settings
 ) -> ForceResult:
-    """Input cost share is a real, if partial, proxy for supplier leverage.
-
-    ``1 − gross_margin`` is the fraction of revenue that leaves as cost of
-    goods. A firm spending 80% of revenue with suppliers is far more exposed to
-    a price rise than one spending 20%. That says nothing about how *many*
-    suppliers there are, which is why the analyst input exists.
-    """
+    """Input cost share is a real, if partial, proxy for supplier leverage."""
     gross_margin = _num(financial_data.get("gross_margin_pct"))
     analyst, missing = _collect(market_data, ["supplier_concentration"])
 

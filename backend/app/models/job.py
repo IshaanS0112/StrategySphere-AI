@@ -1,10 +1,4 @@
-"""The jobs table: one row per unit of background work.
-
-The row, not the in-memory future, is the record. A future dies with the
-process; this survives it, which is what lets ``GET /jobs/{id}`` answer
-truthfully after a restart instead of returning 404 for work that definitely
-happened.
-"""
+"""The jobs table: one row per unit of background work."""
 
 import uuid
 from datetime import datetime

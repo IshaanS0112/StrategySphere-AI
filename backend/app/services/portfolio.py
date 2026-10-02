@@ -1,46 +1,4 @@
-"""Portfolio capital allocation across business units.
-
-**GE-McKinsey was built for exactly this.** McKinsey developed the nine-box for
-General Electric in the early 1970s to allocate capital across GE's business
-units — which of the roughly forty of them should be fed, held or wound down.
-Scoring a single company, which is what V1 and V2 do, is the degenerate case of
-the framework. This module uses it for its actual purpose.
-
-**And GE-McKinsey prescribes no allocation arithmetic.** It is a positioning
-framework: it tells you where a unit sits, and what you then do with the budget
-is management judgement. So the rule implemented here is mine, it is labelled
-``PROJECT-DEFINED ALLOCATION RULE`` in every payload it touches, and it gets
-exactly the same treatment as the Porter composite — a number the UI can sort
-by, with a statement attached that the framework did not supply it.
-
-    priority_score = attractiveness x strength x (1 - entropy_bits / log2(3))
-
-Conjunctive, matching the matrix: a product, not a sum, because being strong on
-one axis and weak on the other is not the same as middling on both. Discounted
-by entropy so a contested position competes for capital on worse terms than a
-decisive one at the same coordinates — which is the entire reason Pillar B
-computes an entropy at all.
-
-**The allocation, in order.**
-
-1. **Every floor is funded first.** A unit's ``capital_floor`` is what keeps it
-   operating and is not discretionary. If the floors exceed the available pool
-   the result is an error naming the shortfall, not a silent partial
-   allocation — a committee that asked "can we fund this portfolio" needs to
-   hear "no", not receive a plan that quietly starves two units.
-2. **Harvest units contribute rather than draw.** A unit in ``HARVEST_DIVEST``
-   adds ``harvest_contribution_rate x revenue`` to the pool. This is the one
-   rule here with real provenance: funding growth out of the cash thrown off by
-   declining units is what GE used the matrix for.
-3. **The remainder is allocated greedily by priority**, capped at each unit's
-   own request.
-4. **What did not get funded is reported, including the marginal unit** — the
-   first one in priority order that did not fit. An allocator that returns only
-   winners hides the decision it actually made.
-
-Ties break on ``(priority_score, entity_key)`` so two identical units always
-come out in the same order.
-"""
+"""Portfolio capital allocation across business units."""
 
 from __future__ import annotations
 
@@ -61,13 +19,7 @@ class PortfolioInputError(ValueError):
 
 @dataclass(frozen=True)
 class PortfolioUnit:
-    """One business unit: an existing scored company-period, plus capital terms.
-
-    ``entity_key`` and ``period_label`` are the V2 period identity, reused
-    rather than duplicated. A portfolio member is a pointer at a company-period
-    row that has already been through the matrix, which is what keeps one
-    unit's position on the grid identical to the one its own page shows.
-    """
+    """One business unit: an existing scored company-period, plus capital terms."""
 
     entity_key: str
     company_id: str
@@ -132,13 +84,7 @@ class AllocationResult:
 
 
 def entropy_discount(entropy_bits: float | None, settings: Settings) -> float:
-    """``1 - entropy/log2(3)``, clamped to [0, 1]. Missing entropy does not discount.
-
-    A unit with no uncertainty analysis is not penalised, because "unmeasured"
-    is not "contested". It is recorded in the allocation's reason so the
-    asymmetry is visible: a unit that never ran the Monte Carlo competes at
-    full priority against one that ran it and came back contested.
-    """
+    """``1 - entropy/log2(3)``, clamped to [0, 1]. Missing entropy does not discount."""
     if entropy_bits is None:
         return 1.0
     ratio = entropy_bits / settings.max_entropy_bits if settings.max_entropy_bits else 0.0

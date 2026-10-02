@@ -1,29 +1,4 @@
-"""A typed error taxonomy, served as RFC 9457 problem details.
-
-V1 through V3 raised ``HTTPException`` with a prose string. That is fine for a
-human reading a 409 in a browser and useless for anything else: a client cannot
-branch on prose, a log aggregator cannot count it, and the same logical failure
-worded two different ways in two routers becomes two different errors.
-
-Every failure this application can produce now has a **stable machine code**
-alongside the prose, and the prose is kept - the explanations are the most
-useful thing the API returns and several of them took a bug to write. The
-response body follows RFC 9457 (``application/problem+json``):
-
-    {
-      "type": "https://strategysphere.dev/errors/stage-order",
-      "title": "Pipeline stage out of order",
-      "status": 409,
-      "code": "STAGE_ORDER",
-      "detail": "Run the market attractiveness matrix first. ...",
-      "instance": "/companies/0c8.../uncertainty",
-      "request_id": "01JB2..."
-    }
-
-``detail`` is exactly what ``HTTPException(detail=...)`` used to carry, so every
-existing client - including this project's own frontend, which reads
-``detail`` - keeps working unchanged.
-"""
+"""A typed error taxonomy, served as RFC 9457 problem details."""
 
 from __future__ import annotations
 
@@ -72,12 +47,7 @@ INTERNAL = ErrorKind("INTERNAL", 500, "Unhandled server error", "internal")
 
 
 class AppError(Exception):
-    """Every deliberate failure in the application is one of these.
-
-    ``extra`` carries structured context - the shortfall on an infeasible
-    budget, the stage that is missing, the unknown input keys - so a client can
-    render something useful without parsing the prose.
-    """
+    """Every deliberate failure in the application is one of these."""
 
     def __init__(self, kind: ErrorKind, detail: str, **extra: Any) -> None:
         super().__init__(detail)
@@ -116,13 +86,7 @@ def invalid_input(detail: str, **extra: Any) -> AppError:
 
 
 def install_handlers(app: Any) -> None:
-    """Register the handlers that turn errors into problem documents.
-
-    Also wraps FastAPI's own ``HTTPException`` and request-validation failures,
-    so the body shape is identical no matter which layer rejected the call. A
-    client that special-cases "our errors look like X, FastAPI's look like Y" is
-    a client that breaks on the next refactor.
-    """
+    """Register the handlers that turn errors into problem documents."""
     from fastapi.exceptions import RequestValidationError
     from starlette.exceptions import HTTPException as StarletteHTTPException
 

@@ -6,12 +6,8 @@ import type { BenchmarkProvenance, Company, Methodology } from "../api/types";
 import { CASE_STUDIES } from "../data/caseStudies";
 
 /**
- * The landing screen answers two questions before anything else: what is
- * loaded, and where do the benchmarks come from.
- *
- * The second one is deliberately given a whole strip at the top. "Are these
- * numbers real" is the first thing anyone should ask of a tool like this, and
- * it is now answerable at a glance rather than by reading a caveats section.
+ * The landing screen answers two questions before anything else: what is loaded, and
+ * where do the benchmarks come from.
  */
 
 function ProvenanceStrip({ provenance }: { provenance: BenchmarkProvenance | null }) {

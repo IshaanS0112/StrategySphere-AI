@@ -110,8 +110,7 @@ export interface Methodology {
   [key: string]: unknown;
 }
 
-// ---------------------------------------------------------------------------
-// V2
+// --------------------------------------------------------------------------- V2
 // ---------------------------------------------------------------------------
 
 export type ForceSource =
@@ -229,7 +228,7 @@ export interface UncertaintyAnalysis {
   quadrant_probabilities: Record<string, number>;
   attractiveness_ci_90: number[];
   strength_ci_90: number[];
-  /** Shannon entropy over the three quadrant probabilities. 0 = certain, 1.585 = a coin flip. */
+  /** Shannon entropy over the three quadrant probabilities. */
   entropy_bits: number;
   verdict_stability: VerdictStability;
   draws: number;
@@ -303,7 +302,7 @@ export interface BenchmarkProvenance {
 
 export interface Page<T> {
   items: T[];
-  /** Opaque. Pass back as ?cursor= for the next page; null means the end. */
+  /** Opaque. */
   next_cursor: string | null;
   /** Only present when the request asked for it: a COUNT costs a scan. */
   total: number | null;

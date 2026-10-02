@@ -3,14 +3,7 @@ import { useNavigate } from "react-router-dom";
 
 import { api } from "../api/client";
 
-/**
- * Manual entry.
- *
- * Numeric fields are kept as strings in state and only parsed on submit: a
- * controlled number input that reparses on every keystroke makes it impossible
- * to type "0.4" (the intermediate "0." is not a number) and silently drops
- * trailing decimals.
- */
+/** Manual entry. */
 
 interface MetricField {
   key: string;

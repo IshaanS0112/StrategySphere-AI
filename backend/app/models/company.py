@@ -1,3 +1,5 @@
+"""The company table: one row is a company as reported for one period."""
+
 import uuid
 from datetime import date, datetime
 from typing import TYPE_CHECKING
@@ -27,10 +29,7 @@ class Company(Base):
     name: Mapped[str] = mapped_column(String(200), nullable=False)
     industry: Mapped[str | None] = mapped_column(String(100))
 
-    # Free-shaped by design: different case studies disclose different line
-    # items. The SWOT engine reads named keys and simply skips the metrics a
-    # given company did not supply, recording the omission in calculation_basis
-    # rather than imputing a value.
+    # Free-shaped by design: different case studies disclose different line items.
     financial_data: Mapped[dict] = mapped_column(JsonBlob, nullable=False, default=dict)
 
     # Market-level inputs (growth, size, regulatory outlook). Kept separate
@@ -38,14 +37,10 @@ class Company(Base):
     market_data: Mapped[dict] = mapped_column(JsonBlob, nullable=False, default=dict)
 
     # {feature_name: score} on a 1-5 scale, using the same feature names as the
-    # competitors. The pricing engine intersects the key sets, so a feature the
-    # competitors never scored is silently useless rather than quietly wrong.
+    # competitors.
     feature_scores: Mapped[dict] = mapped_column(JsonBlob, nullable=False, default=dict)
 
     # Analyst-supplied qualitative factors: brand, distribution, talent.
-    # [{factor, category, evidence, impact_score}] - scored by a human, carried
-    # through untouched, and labelled as analyst input in the output so it is
-    # never mistaken for a computed figure.
     qualitative_inputs: Mapped[list] = mapped_column(JsonBlob, nullable=False, default=list)
 
     # Where the numbers came from. Required in the API layer; a case study with
@@ -53,13 +48,7 @@ class Company(Base):
     data_source: Mapped[str | None] = mapped_column(String(500))
 
     # --- V2: the period dimension ------------------------------------------
-    # A row in this table is a company *as reported for one period*, not a
-    # company. Two rows sharing an entity_key are the same real firm at two
-    # points in time, which is what makes quadrant migration meaningful.
-    #
-    # Both columns are nullable so the migration is purely additive: every V1
-    # row stays valid and simply has no timeline. A company with no entity_key
-    # is a standalone snapshot, which is the V1 behaviour exactly.
+    # A row in this table is a company *as reported for one period*, not a company.
     entity_key: Mapped[str | None] = mapped_column(String(120), index=True)
     period_label: Mapped[str | None] = mapped_column(String(40))     # "FY2024", "Q3-2025"
     # Sort key for the timeline. Label alone will not order correctly:
@@ -67,10 +56,7 @@ class Company(Base):
     period_end: Mapped[date | None] = mapped_column(Date)
 
     # --- V3: stated uncertainty about the point inputs ---------------------
-    # {metric: {low, mode, high}} for the axis inputs the matrix reads. Absent
-    # means no distributions were stated, which is every V1 and V2 row and is
-    # exactly what the point-estimate pipeline assumes. Nothing is backfilled:
-    # inventing a range would be fabricating the analyst's own uncertainty.
+    # {metric: {low, mode, high}} for the axis inputs the matrix reads.
     uncertainty_inputs: Mapped[dict | None] = mapped_column(JsonBlob)
 
     created_at: Mapped[datetime] = mapped_column(

@@ -1,21 +1,4 @@
-"""SIC code to sector class, declared as a table rather than a chain of ifs.
-
-SIC codes come from the submissions endpoint, which returns ``sic`` and
-``sicDescription`` per company. The SEC still classifies every filer with the
-Standard Industrial Classification, which the US census retired in 1997 in
-favour of NAICS; EDGAR did not follow, so SIC is what the data actually has.
-
-The sector names on the right of this table are the keys the benchmark table
-already uses (``saas``, ``retail``, ``manufacturing``), extended where a range
-plainly needed its own row. They are matched against ``Company.industry``
-lowercased, so a company created with ``industry="SaaS"`` finds the ``saas``
-row and one with ``industry="Fintech"`` falls through to ``_default`` — which
-is the pre-existing behaviour of ``industry_benchmark()`` and needed no change.
-
-**Ranges are half-open on the right and ordered most-specific-first.** 7372
-(prepackaged software) must be tested before the 7000-8999 services block, or
-every software company lands in ``services``.
-"""
+"""SIC code to sector class, declared as a table rather than a chain of ifs."""
 
 from __future__ import annotations
 
@@ -64,9 +47,7 @@ SIC_RANGES: tuple[SicRange, ...] = (
     SicRange(9100, 9999, "public_admin", "Public administration and non-classifiable"),
 )
 
-# Every sector this table can emit. Kept explicit so the builder can report the
-# sectors that produced no companies at all, which is different from a sector
-# that produced too few.
+# Every sector this table can emit.
 KNOWN_SECTORS: tuple[str, ...] = tuple(
     dict.fromkeys(entry.sector for entry in SIC_RANGES)
 )
@@ -75,13 +56,7 @@ UNCLASSIFIED = "_unclassified"
 
 
 def sector_for_sic(sic: int | str | None) -> str:
-    """Map one SIC code onto a sector class.
-
-    An absent, blank, or unrecognised code returns ``_unclassified`` rather
-    than guessing a sector. Those companies still count toward the all-filer
-    median — they are perfectly good data about filers in general, just not
-    about any particular sector.
-    """
+    """Map one SIC code onto a sector class."""
     if sic is None:
         return UNCLASSIFIED
     try:

@@ -1,37 +1,4 @@
-"""GE-McKinsey market attractiveness matrix.
-
-The GE-McKinsey (or GE/McKinsey nine-box) matrix is a real strategic planning
-framework, developed by McKinsey for General Electric in the early 1970s to
-allocate capital across GE's business units. It plots each unit on two axes —
-**industry attractiveness** and **business unit competitive strength** — and
-reads an investment verdict off the position.
-
-This module implements it. The two axes are computed, not asserted:
-
-    market_attractiveness = w1·growth + w2·size + w3·profitability
-                          + w4·(6 − competitive_intensity)
-
-``(6 − intensity)`` inverts intensity onto the same 1-5 axis as the other three
-terms without flipping the sign of the weight, so all four weights stay
-positive and comparable. Weights sum to 1.0 (enforced in ``Settings``), which is
-what keeps the output on the 1-5 scale the thresholds assume.
-
-    competitive_strength = mean(strength impacts) − penalty·(mean(weakness impacts) − 3)
-
-An earlier formulation of this axis used the mean of SWOT strength impact
-scores alone. That formula has a real defect: a company with one
-outstanding margin and four structural weaknesses scores as strong, because
-nothing in the formula can see the weaknesses. The penalty term fixes it, and is
-centred on 3.0 so a company with *average* weaknesses is unaffected. Setting
-``swot_weakness_penalty = 0`` reproduces the original formula exactly, and a
-test pins that equivalence.
-
-Quadrant placement uses the documented thresholds, plus a ``borderline`` flag
-when the point sits within ``quadrant_borderline_margin`` of a boundary. A
-score of 3.51 is not meaningfully different from 3.49, and reporting the first
-as a confident INVEST_GROW is how a model gets a strategy committee to make a
-decision the arithmetic does not support.
-"""
+"""GE-McKinsey market attractiveness matrix."""
 
 from __future__ import annotations
 
@@ -86,25 +53,7 @@ def _axis_score(
 def compute_competitive_strength(
     swot: SwotResult, settings: Settings
 ) -> tuple[float, dict[str, Any]]:
-    """Net competitive strength on the 1-5 axis, with its derivation.
-
-    The empty-strengths case needs care, and getting it wrong was a real bug
-    caught by the end-to-end smoke run. There are two different situations
-    that both produce ``strengths == []`` and they must not be treated alike:
-
-    * **Nothing was evaluated.** No financial metrics cleared a benchmark
-      because none were supplied. That is an absence of evidence, and the
-      honest base is neutral 3.0 with a loud warning.
-    * **Everything was evaluated and none of it was a strength.** The engine
-      scored nine weaknesses and zero strengths. That is not missing evidence,
-      it is evidence — of a company that is behind its peers on every axis it
-      reported. Defaulting that to 3.0 handed a failing manufacturer a
-      competitive-strength score of 2.56 and a SELECTIVE_INVEST verdict when
-      the correct read was HARVEST_DIVEST.
-
-    So the base falls to the floor of the axis when weaknesses exist and
-    strengths do not.
-    """
+    """Net competitive strength on the 1-5 axis, with its derivation."""
     strength_scores = [f.impact_score for f in swot.strengths]
     weakness_scores = [f.impact_score for f in swot.weaknesses]
 

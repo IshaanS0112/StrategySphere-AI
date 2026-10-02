@@ -1,7 +1,4 @@
-"""Errors, caching, observability and pagination.
-
-The infrastructure the rest of the application now assumes is there.
-"""
+"""Errors, caching, observability and pagination."""
 
 from __future__ import annotations
 

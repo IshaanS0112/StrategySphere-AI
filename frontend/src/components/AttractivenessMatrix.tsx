@@ -1,12 +1,6 @@
 import type { MarketAttractiveness } from "../api/types";
 
-/**
- * The GE-McKinsey grid, drawn to scale.
- *
- * Both axes run 1-5 and the boundary lines sit at the configured 2.5 / 3.5
- * thresholds, so the plotted point's position is the actual computed position
- * rather than a decorative marker dropped in the middle of a labelled box.
- */
+/** The GE-McKinsey grid, drawn to scale. */
 
 const SIZE = 340;
 const PAD = 44;

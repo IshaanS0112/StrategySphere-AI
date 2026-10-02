@@ -43,8 +43,7 @@ const SOURCE_LABEL: Record<string, string> = {
   analyst_input: "analyst",
 };
 
-/** Five segments, filled to the impact score. Position encodes the value, so
- *  the colour is reinforcement rather than the only signal. */
+/** Five segments, filled to the impact score. */
 function ImpactBar({ score, tone }: { score: number; tone: string }) {
   return (
     <span

@@ -1,10 +1,4 @@
-"""Multi-period timelines and the validation harness.
-
-The validation tests are the ones with teeth. A backtest that reports a
-separation without a null is how a model that is indistinguishable from noise
-gets called validated, so the permutation test is checked against data
-constructed to have no signal at all.
-"""
+"""Multi-period timelines and the validation harness."""
 
 from __future__ import annotations
 
@@ -161,7 +155,8 @@ class TestValidation:
 
     def test_pure_noise_is_not_called_significant(self, settings: Settings):
         """Outcomes deliberately unrelated to quadrant. The harness must not
-        report this as validation."""
+                report this as validation.
+        """
         outcomes = [0.1, -0.2, 0.3, -0.1, 0.05, 0.2, -0.3, 0.15, -0.05, 0.25]
         quadrants = [
             "INVEST_GROW",
@@ -264,9 +259,7 @@ class TestSpearmanPermutation:
         assert spearman_permutation_p(xs, ys, settings) > 0.05
 
     def test_it_is_two_sided(self, settings):
-        # A strongly REVERSED association is also a rejection of "no
-        # information". A one-sided test would hide a framework predicting the
-        # opposite of what it claims.
+        # A strongly REVERSED association is also a rejection of "no information".
         from app.services.validation import spearman_permutation_p
 
         xs = list(range(40))

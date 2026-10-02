@@ -1,31 +1,4 @@
-"""What-if scenarios: recompute the pipeline under a named set of overrides.
-
-Sensitivity analysis answers "what would have to change?". A scenario answers
-the question an actual strategy committee asks: "what happens if the market
-cools and a well-funded entrant takes 15% share?" — several inputs moving at
-once, in a combination someone can argue about.
-
-**Three rules this module is built around.**
-
-1. **Overrides are stored, not the mutated inputs.** A scenario row records the
-   *delta* from a baseline. Storing the resulting inputs instead would make the
-   scenario unreadable six months later — you would see a company with 8%
-   growth and no way to know that 18% was the baseline.
-
-2. **Nothing mutates the stored company.** The engine deep-copies the baseline
-   inputs before applying overrides. A scenario that quietly rewrote the
-   company row would silently corrupt every later analysis, and it is exactly
-   the bug this shape prevents.
-
-3. **The diff is against the stored baseline result, not a recomputation.**
-   Comparing a scenario against a freshly recomputed baseline would hide drift:
-   if the engines changed between the two runs, the delta would attribute that
-   change to the scenario.
-
-Competitor overrides support three operations, because a market shock is
-usually structural rather than a number nudge: ``add`` a new entrant, ``remove``
-a rival by name, and ``update`` an existing one's share or price.
-"""
+"""What-if scenarios: recompute the pipeline under a named set of overrides."""
 
 from __future__ import annotations
 
@@ -44,9 +17,7 @@ class ScenarioInputError(ValueError):
     """Raised when an override cannot be applied to the baseline."""
 
 
-# Keys a scenario is allowed to touch. Anything else is rejected rather than
-# silently ignored - a typo'd override that does nothing looks like a working
-# scenario that proves the verdict is stable, which is worse than an error.
+# Keys a scenario is allowed to touch.
 ALLOWED_MARKET_KEYS = {
     "market_growth_pct",
     "market_size_usd_bn",
@@ -188,14 +159,7 @@ def _apply_competitor_ops(
 
 
 def _diff(baseline: dict[str, Any], scenario: dict[str, Any]) -> dict[str, Any]:
-    """Field-by-field delta, reporting only what actually moved.
-
-    Fields that did not change are omitted rather than listed with a zero
-    delta. Two reasons: a delta report padded with zeros buries the one number
-    that moved, and an always-populated dict makes "did this scenario change
-    anything?" unanswerable — which is how a no-op override ends up looking
-    like evidence that the verdict is stable.
-    """
+    """Field-by-field delta, reporting only what actually moved."""
     out: dict[str, Any] = {}
     for key, base_value in baseline.items():
         new_value = scenario.get(key)

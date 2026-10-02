@@ -1,11 +1,4 @@
-"""Job submission and polling.
-
-The pattern is the standard one for work that does not fit in a request:
-``202 Accepted`` with a ``Location`` header pointing at the job, and the client
-polls until the state is terminal. A 202 with no way to find the result is the
-classic half-implementation - it tells the caller their work was accepted and
-then strands them - so every enqueue here returns the row and the URL.
-"""
+"""Job submission and polling."""
 
 from __future__ import annotations
 
@@ -59,12 +52,7 @@ def get_job(job_id: uuid.UUID, db: DbSession, response: Response):
 
 @router.post("/jobs/{job_id}/cancel", response_model=JobOut)
 def cancel_job(job_id: uuid.UUID, db: DbSession):
-    """Ask a running job to stop at its next checkpoint.
-
-    Cooperative: the job checks a flag between units of work. Killing the
-    thread outright would be immediate and would also be how a benchmark file
-    ends up half written.
-    """
+    """Ask a running job to stop at its next checkpoint."""
     row = _load(db, job_id)
     if not jobs.cancel(db, job_id):
         raise errors.AppError(
@@ -88,19 +76,7 @@ def build_benchmarks(
     settings: AppSettings,
     response: Response,
 ):
-    """Rebuild the benchmark table from SEC filings, as a background job.
-
-    V3 returned 501 here and told the caller to run a CLI, because doing this
-    work inside a request means hundreds of rate-limited outbound calls over
-    several minutes behind one HTTP connection. That reasoning was right and
-    the refusal was the wrong conclusion: the answer is to accept the work and
-    hand back somewhere to watch it.
-
-    Still refuses without ``EDGAR_USER_AGENT``. The SEC requires automated
-    access to identify itself, and a job that fails two minutes in on a
-    configuration problem the server could have checked immediately is a worse
-    experience than a 503 now.
-    """
+    """Rebuild the benchmark table from SEC filings, as a background job."""
     if not settings.edgar_user_agent:
         raise errors.AppError(
             errors.NOT_CONFIGURED,
